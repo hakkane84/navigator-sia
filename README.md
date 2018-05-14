@@ -58,7 +58,8 @@ Launch `navigator.js` on the command line, preferentially using Forever (`foreve
 
 The initial indexing will start immediately, and the API server will become available in port 3500. Queries to the database are performed through API calls (either GET or POST). The JSON responses consists on an array of multiple objects. The type of object depends on the specific endpoint called, and on the type of hash when the `/hash/:hash` call is executed. Refer to the following figure to understand the outcome of each call:
 
-(picture)
+![API scheme](https://github.com/hakkane84/navigator-sia/blob/master/API_scheme1.JPG)
+![API scheme2](https://github.com/hakkane84/navigator-sia/blob/master/API_scheme2.JPG)
 
 An optional website frontend is available on /web. Deploy its contents on your favorite webserver (IIS, XAMPP…). A complete working frontend (with custom CSSs) can be found at http://siastats.info/navigator . Remember to change the variable `apiPath` on `web/navigator.html` to make it available externally. Navigator can only be accessed externally in a website secured by SSL, with its keys and certificates placed on `modules/ssl_certificate/`.
 
