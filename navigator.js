@@ -12,7 +12,6 @@ var SqlFunctions = require('./modules/sqlfunctions.js')
 var Siafunds = require('./modules/siafunds.js')
 var Siacoins = require('./modules/siacoins.js')
 var FileContracts = require('./modules/filecontracts.js')
-var RestServer = require('./modules/restserver.js')
 
 // Parameters for accessing the SQL database (Customize also in modules/sqlfunctions.js)
 var sqlLogin = {
@@ -29,9 +28,6 @@ var sqlLogin = {
         idleTimeoutMillis: 30000
     }
 };
-
-// Initializes the API server
-RestServer.restServer(sqlLogin)
 
 // GLOBAL PARAMETERS
 // Delay between blocks (avoids the SQL controller choking), as number of requests per second. Default: 500
