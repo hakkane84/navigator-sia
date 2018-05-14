@@ -14,7 +14,7 @@ Navigator is the technology that powers https://siastats.info/navigator
 It is composed by the following 3 elements:
 
 * A blockchain indexer that collects information from API calls to Sia, processes them and saves them to an SQL database. It performs both the initial indexing task and real-time indexing of new blocks added to the blockchain. It is initialized in the file `navigator.js`
-* A RESTful server with multiple endpoints that executes queries to the SQL database, processes them and serves them to the user as a JSON object. It is contained as a module of `navigator.js`
+* A RESTful server with multiple endpoints that executes queries to the SQL database, processes them and serves them to the user as a JSON object. It is initialized in the file `modules/restserver.js`
 * A single-page web frontend that collects the user request, makes API calls and visualizes the returned JSON in a user-friendly fashion. The visualization is customized for the type of blockchain object queried. It is optional to use, and it is contained on the `web/` folder
 
 ## Technical details
@@ -55,6 +55,8 @@ For the website frontend to work properly (not necessary if only the API server 
 
 ## Usage 
 Launch `navigator.js` on the command line, preferentially using Forever (`forever start navigator.js`, logs will be saved to a file, check the `forever` documentation) as it is not infrequent that the script crashes. If not launched trough Forever, the script will have to be -reinitiated manually.
+
+Launch `modules/restserver.js` on the command line, preferentially using Forever (`forever start modules/navigator.js`)
 
 The initial indexing will start immediately, and the API server will become available in port 3500. Queries to the database are performed through API calls (either GET or POST). The JSON responses consists on an array of multiple objects. The type of object depends on the specific endpoint called, and on the type of hash when the `/hash/:hash` call is executed. Refer to the following figure to understand the outcome of each call:
 
