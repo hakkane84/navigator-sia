@@ -2,9 +2,6 @@
 //         RESTful API server
 // ===================================
 
-var exports = module.exports={}
-
-exports.restServer = function(sqlLogin) {
 
     // Dependencies
     var fs = require('fs');
@@ -16,8 +13,8 @@ exports.restServer = function(sqlLogin) {
     var morgan = require("C:/nodejs/node_modules/morgan")
 
     // SSL keys, INTRODUCE THE FILE NAMES HERE
-    var privateKey  = fs.readFileSync('./modules/ssl_certificate/xxx.key', 'utf8');
-    var certificate = fs.readFileSync('./modules/ssl_certificate/xxx.crt', 'utf8');
+    var privateKey  = fs.readFileSync('./ssl_certificate/xxx.key', 'utf8');
+    var certificate = fs.readFileSync('./ssl_certificate/xxx.crt', 'utf8');
     var credentials = {key: privateKey, cert: certificate};
 
     var app = express();
@@ -597,7 +594,7 @@ exports.restServer = function(sqlLogin) {
         // Reads the file status.json
         var data = '';
         var chunk;
-        var stream = fs.createReadStream("status.json")
+        var stream = fs.createReadStream("../status.json")
         stream.on('readable', function() { //Function just to read the whole file before proceeding
             while ((chunk=stream.read()) != null) {
                 data += chunk;}
@@ -614,7 +611,7 @@ exports.restServer = function(sqlLogin) {
         // Reads the file landingpagedata.json
         var data = '';
         var chunk;
-        var stream = fs.createReadStream("landingpagedata.json")
+        var stream = fs.createReadStream("../landingpagedata.json")
         stream.on('readable', function() { //Function just to read the whole file before proceeding
             while ((chunk=stream.read()) != null) {
                 data += chunk;}
@@ -684,4 +681,3 @@ exports.restServer = function(sqlLogin) {
         
         return hash
     }
-}
