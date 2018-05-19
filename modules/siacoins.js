@@ -101,6 +101,9 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
             addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
         }
     }
+    
+    // Adding the fees to the total transacted
+    totalSCtransacted = totalSCtransacted + minerFees
 
     // Saving the data in SQL Insert queries
     // Tx type
@@ -175,7 +178,17 @@ exports.scSingleTransaction = function(apiblock, n, height, timestamp) {
     for (var j = 0; j < apiblock.transactions[n].siacoininputoutputs.length; j++) { // in case of several receivers
         var senderHash = apiblock.transactions[n].siacoininputoutputs[j].unlockhash
         var senderAmount = parseInt(apiblock.transactions[n].siacoininputoutputs[j].value) * -1
-        addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
+        // In case of multiple outputs coming from the same address, like in defrag operations
+        var senderRepeatedBool = false
+        for (k = 0; k < addressesImplicated.length; k++) {
+            if (senderHash == addressesImplicated[k].hash) { // Merging amounts
+                addressesImplicated[k].sc = addressesImplicated[k].sc + senderAmount
+                senderRepeatedBool = true
+            }
+        }
+        if (senderRepeatedBool == false) { // If address not repeated, then add the operation
+            addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
+        }
     }
 
     // MasterHash as synonym
