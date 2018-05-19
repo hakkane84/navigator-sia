@@ -105,22 +105,30 @@ sia.connect('localhost:9980').then((siad) => { siad.call('/consensus').then((con
 function blockArrayBuild(blocksInDb, consensusBlock, blocksToDelete)  {
     // Constructs the array of blocks to index
     var blocks = []
-    blocksInDb.sort( function(a, b) {return a-b} )
-    // A - checking gaps in database 
-    if (blocksInDb.length > 1) {
-        for (var m = 1; m < blocksInDb.length; m++) { // Check all the blocks already indexed
-            var gap = parseInt(blocksInDb[m]) - parseInt(blocksInDb[m-1]) - 1
-            for (var o = 0; o < gap; o++) {
-                // Adding blocks per each gap lenght
-                var missingBlock = parseInt(blocksInDb[m-1]) + o
-                blocks.push(missingBlock)
+    if (blocksInDb.length > 0) {
+        blocksInDb.sort( function(a, b) {return a-b} )
+        // A - checking gaps in database 
+        if (blocksInDb.length > 1) {
+            for (var m = 1; m < blocksInDb.length; m++) { // Check all the blocks already indexed
+                var gap = parseInt(blocksInDb[m]) - parseInt(blocksInDb[m-1]) - 1
+                for (var o = 0; o < gap; o++) {
+                    // Adding blocks per each gap lenght
+                    var missingBlock = parseInt(blocksInDb[m-1]) + o
+                    blocks.push(missingBlock)
+                }
             }
         }
-    }
+        //console.log("Gap blocks: " + blocks)
 
-    // B - Filling up the DB until we reach consensus block
-    for (var n = (blocksInDb[blocksInDb.length-1] + 1); n <= consensusBlock; n++) {
-        blocks.push(n)
+        // B - Filling up the DB until we reach consensus block
+        for (var n = (blocksInDb[blocksInDb.length-1] + 1); n <= consensusBlock; n++) {
+            blocks.push(n)
+        }
+
+    } else { // If the database is empty, first indexing
+        for (var n = 0; n <= consensusBlock; n++) {
+            blocks.push(parseFloat(n))
+        }
     }
 
     // C - Removing blacklisted blocks
@@ -162,7 +170,7 @@ function blockRequest(remainingBlocks) {
             var height = parseFloat(apiblock.height)
             var timestamp = parseFloat(apiblock.rawblock.timestamp)
             
-            if (block =! apiblock.height) {
+            if (block =! apiblock.height && apiblock.height > 0) {
                 // This check reveals the EXPLORER module of Sia has returned an incorrect block. Usually, this is due to a corruption of
                 // its database
                 console.log("Incorrect block retreived. Explorer module might be corrupted. New request in 5 minutes")
