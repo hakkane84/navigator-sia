@@ -304,10 +304,14 @@ exports.revisionProcess = function(apiblock, n, height, timestamp) {
                     }
 
                     // Receiver of the remaining funds returning to the wallet (it is just one, the other output are the mining fees)
-                    var receiverAddress = apiblock.transactions[m].rawtransaction.siacoinoutputs[1].unlockhash
-                    var receiverSc = parseInt(apiblock.transactions[m].rawtransaction.siacoinoutputs[1].value)
-                    addressesImplicated.push({"hash": receiverAddress, "sc": receiverSc})
-                    addressesAux.push(receiverAddress) // Saving it in this temp array to later be pushed as a hash type in the main loop of navigator.js
+                    // EXCEPTION: A very few number of transactions have no wallet return, the exact amount is sent as fees. 
+                    // This if condition deals with this
+                    if (apiblock.transactions[m].rawtransaction.siacoinoutputs.length > 1) {
+                        var receiverAddress = apiblock.transactions[m].rawtransaction.siacoinoutputs[1].unlockhash
+                        var receiverSc = parseInt(apiblock.transactions[m].rawtransaction.siacoinoutputs[1].value)
+                        addressesImplicated.push({"hash": receiverAddress, "sc": receiverSc})
+                        addressesAux.push(receiverAddress) // Saving it in this temp array to later be pushed as a hash type in the main loop of navigator.js
+                    }
                 }
             }
         }
