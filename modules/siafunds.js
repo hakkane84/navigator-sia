@@ -188,6 +188,13 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
             }
         }
     }
+    // EXCEPTION: singlet TX where the parent TX paying the fees is not in the same block. Caused by F2pool that splits transactions
+    if (senderFound == false) {
+        var senderHash = apiblock.transactions[n].siacoininputoutputs[0].unlockhash
+        var senderAmount = (apiblock.transactions[n].siacoininputoutputs[0].value) * -1
+        addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0})
+        totalSCtransacted = totalSCtransacted + parseInt(minerFees)
+    }
 
 
     // Saving the data in SQL Insert queries
