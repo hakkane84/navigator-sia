@@ -238,3 +238,83 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     var returnArray = [newSql, txsIndexed]
     return returnArray
 }
+
+
+exports.sfSingleTransaction = function(apiblock, n, height, timestamp) {
+    // EXCEPTION: Orphaned singlets
+    // Special cases of transactions not paying miner fees. Only happens in pool payouts of certain mining pools (F2pool)
+    var totalSFtransacted = 0
+    var totalSCtransacted = 0
+    var minerFees = 0
+    var addressesImplicated = []
+    var masterHash = apiblock.transactions[n].id
+    var synonymHahses = []
+    synonymHahses.push(apiblock.transactions[n].id)
+    var newSql = []
+    var addressesAux = []
+
+    // Receivers info
+    for (var i = 0; i < apiblock.transactions[n].rawtransaction.siafundoutputs.length; i++) { // in case of several receivers
+        var receiverHash = apiblock.transactions[n].rawtransaction.siafundoutputs[i].unlockhash
+        var receiverAmount = apiblock.transactions[n].rawtransaction.siafundoutputs[i].value
+        addressesImplicated.push({"hash": receiverHash, "sc": 0, "sf": receiverAmount})
+        totalSFtransacted = totalSFtransacted + parseInt(receiverAmount)
+    }
+    
+    // Senders info
+    for (var j = 0; j < apiblock.transactions[n].siafundinputoutputs.length; j++) { // in case of several inputs
+        // To avoid duplication in addresses, search if the address is already computed and update the balance
+        var matchBool = false
+        for (var k = 0; k < addressesImplicated.length; k++) {
+            if (addressesImplicated[k].hash == apiblock.transactions[n].siafundinputoutputs[j].unlockhash) {
+                addressesImplicated[k].sf = addressesImplicated[k].sf - apiblock.transactions[n].siafundinputoutputs[j].value
+                matchBool = true
+            }
+        }
+        if (matchBool == false) {
+            var senderHash = apiblock.transactions[n].siafundinputoutputs[j].unlockhash
+            var senderAmount = (apiblock.transactions[n].siafundinputoutputs[j].value) * -1
+            addressesImplicated.push({"hash": senderHash, "sc": 0, "sf": senderAmount})
+        }
+       
+        // SC dividend claim is calculated from the totalcontractcost minus the part indicated in claimstart
+        var senderClaim = apiblock.transactions[n].siafundinputoutputs[j].claimstart
+        senderClaim = ((apiblock.totalcontractcost * 0.039) - senderClaim) / 10000
+        totalSCtransacted = totalSCtransacted + parseInt(senderClaim)
+        senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+        // Saving the claim independently, as it is a diffirent kind of SC address change ("SfClaim")
+        var toAddAddressChanges = "('" + senderClaimAddress + "','" + masterHash + "'," + senderClaim + 
+            ",0," + height + "," + timestamp + ",'SfClaim')"
+        var checkString = senderClaimAddress + "' and MasterHash='" + masterHash 
+        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
+        var toAddHashTypes = "('" + senderClaimAddress + "','address','')"
+        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, senderClaimAddress))
+    }
+
+    // Saving the data in SQL Insert queries
+    for (var m = 0; m < synonymHahses.length; m++) {
+        var toAddHashTypes = "('" + synonymHahses[m] + "','SfTx','" + masterHash + "')"
+        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
+    }
+
+    for (var m = 0; m < addressesImplicated.length; m++) {
+        var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
+            "," + addressesImplicated[m].sf + "," + height + "," + timestamp + ",'SfTx')"
+        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
+        // This check will look rows with the fields Address and MasterHash to not include a duplicate
+        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
+        
+        // Saving used addressed in a temporal array, as they need to be de-duplicated at the end of the block
+        addressesAux.push(addressesImplicated[m].hash)
+    }
+    var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
+    newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
+    
+    // Saving TX as a component of a block
+    var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','SfTx'," + totalSCtransacted + "," + totalSFtransacted + ")"
+    newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
+
+    // I return 2 elements
+    var returnArray = [newSql, addressesAux]
+    return returnArray    
+}

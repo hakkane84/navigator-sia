@@ -343,6 +343,15 @@ function blockRequest(remainingBlocks) {
                                 totalAddresses.push(addresses[m])
                             }
                         }
+                        // ANOTHER EXCEPTIONAL CASE: SF TX "ORPHANED" (a singlet TX not paying fees, again due to F2pool)
+                        if (thisTxAlreadyIndexed == false && apiblock.transactions[i].rawtransaction.siafundoutputs.length != 0) {
+                            var returnArray = Siafunds.sfSingleTransaction(apiblock, i, height, timestamp)
+                            sqlBatch = sqlBatch.concat(returnArray[0])
+                            var addresses = returnArray[1]
+                            for (var m = 0; m < addresses.length; m++) {
+                                totalAddresses.push(addresses[m])
+                            }
+                        }
                     }
 
                     // Saving all the addresses used in this block
