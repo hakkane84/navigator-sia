@@ -285,6 +285,7 @@ exports.revisionProcess = function(apiblock, n, height, timestamp) {
         var missedProof3Address = tx.rawtransaction.filecontractrevisions[0].newmissedproofoutputs[2].unlockhash
 
         // Finding the linked TX (the sending TX)
+        var matchBool = false
         var matcher = tx.rawtransaction.siacoininputs[0].parentid
         var senderSc = []
         var senderAddress = []
@@ -292,6 +293,7 @@ exports.revisionProcess = function(apiblock, n, height, timestamp) {
             if ( apiblock.transactions[m].siacoinoutputids != null) { // To avoid errors, as some TXs don't have siacoin outputs 
                 if (matcher == apiblock.transactions[m].siacoinoutputids[0]) {
 
+                    matchBool = true
                     synonymHash = apiblock.transactions[m].id
                     txsIndexed.push(m) // Marking as indexed
                     for (var j = 0; j < apiblock.transactions[m].siacoininputoutputs.length; j++) { // In case of multiple senders
@@ -313,6 +315,20 @@ exports.revisionProcess = function(apiblock, n, height, timestamp) {
                         addressesAux.push(receiverAddress) // Saving it in this temp array to later be pushed as a hash type in the main loop of navigator.js
                     }
                 }
+            }
+        }
+        
+        // EXCEPTION: Singlet transaction revisions, where the sender TX is in a different block. This is caused be the abnormal block structure
+        // of blocks mined by F2pool
+        if (matchBool == false) {
+            synonymHash = ""
+            // Sender
+            for (var j = 0; j < tx.siacoininputoutputs.length; j++) { // In case of multiple senders
+                senderAddress[j] = tx.siacoininputoutputs[j].unlockhash
+                senderSc[j] = parseInt(tx.siacoininputoutputs[j].value) * -1
+                addressesImplicated.push({"hash": senderAddress[j], "sc": senderSc[j]})
+                totalTransacted = totalTransacted + parseInt(tx.siacoininputoutputs[j].value)
+                // I don't save any address as hash type, as all of them are senders and should be already on the DB
             }
         }
     } else {
