@@ -153,6 +153,19 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
                 var senderAmount = (apiblock.transactions[n].siafundinputoutputs[j].value) * -1
                 addressesImplicated.push({"hash": senderHash, "sc": 0, "sf": senderAmount})
             }
+            
+            // SC dividend claim is calculated from the totalcontractcost minus the part indicated in claimstart
+            var senderClaim = apiblock.transactions[n].siafundinputoutputs[j].claimstart
+            senderClaim = ((apiblock.totalcontractcost * 0.039) - senderClaim) / 10000
+            totalSCtransacted = totalSCtransacted + parseInt(senderClaim)
+            senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+            // Saving the claim independently, as it is a diffirent kind of SC address change ("SfClaim")
+            var toAddAddressChanges = "('" + senderClaimAddress + "','" + masterHash + "'," + senderClaim + 
+                ",0," + height + "," + timestamp + ",'SfClaim')"
+            var checkString = senderClaimAddress + "' and MasterHash='" + masterHash 
+            newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
+            var toAddHashTypes = "('" + senderClaimAddress + "','address','')"
+            newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, senderClaimAddress))
         }
     }
 
