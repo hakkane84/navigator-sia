@@ -113,7 +113,7 @@ function blockArrayBuild(blocksInDb, consensusBlock, blocksToDelete)  {
                 var gap = parseInt(blocksInDb[m]) - parseInt(blocksInDb[m-1]) - 1
                 for (var o = 0; o < gap; o++) {
                     // Adding blocks per each gap lenght
-                    var missingBlock = parseInt(blocksInDb[m-1]) + o
+                    var missingBlock = parseInt(blocksInDb[m-1]) + o + 1
                     blocks.push(missingBlock)
                 }
             }
