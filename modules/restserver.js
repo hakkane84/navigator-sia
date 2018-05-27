@@ -542,8 +542,8 @@
                                         contractsArray[i].statusnavigator = recordset.recordset[j].Status
                                     }
                                     if (contractsArray[i].statusnavigator == "complete-fail") {
-                                        revenueLost = revenueLost + recordset.recordset[j].MissedProof2Value
-                                        revenueNet = revenueNet - recordset.recordset[j].MissedProof2Value
+                                        revenueLost = revenueLost + recordset.recordset[j].MissedProof3Value
+                                        revenueNet = revenueNet - recordset.recordset[j].MissedProof3Value
                                         countFail++
                                     } else if (contractsArray[i].statusnavigator == "complete-succ") {
                                         // The amount sent as collateral is substracted
