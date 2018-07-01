@@ -313,13 +313,27 @@ function blockRequest(remainingBlocks, sqlBatch, poolsDb) {
                 minerAddress = "Genesis block"
             }
             
+            // Mining pool
+            var miningPool = "Unknown" // By default
+            for (var a = 0; a < poolsDb.length; a++) { // For each pool
+                for (var b = 0; b < poolsDb[a].addresses.length; b++) { // For each address
+                    if (minerAddress == poolsDb[a].addresses[b]) {
+                        miningPool = poolsDb[a].name
+                        b = poolsDb[a].addresses.length // Finishes the loop
+                    }
+                }
+                if (miningPool != "Unknown") {
+                    a = poolsDb.length // Finishes the loop
+                }
+            }
+            
             var toAddBlockInfo = "(" + height + "," + timestamp + "," + transactionCount + ",'" + blockHash + "','" + minerAddress + "','"
                 + minerArbitraryData + "'," + parseInt(apiblock.difficulty) + "," + parseInt(apiblock.estimatedhashrate) + "," + parseInt(apiblock.totalcoins) + ","
                 + parseInt(apiblock.siacoininputcount) + "," + parseInt(apiblock.siacoinoutputcount) + "," + parseInt(apiblock.filecontractrevisioncount) + "," + parseInt(apiblock.storageproofcount) + "," 
                 + parseInt(apiblock.siafundinputcount) + "," + parseInt(apiblock.siafundoutputcount) + "," + parseInt(apiblock.activecontractcost) + ","
                 + parseInt(apiblock.activecontractcount) + "," + parseInt(apiblock.activecontractsize) + "," + parseInt(apiblock.totalcontractcost) + ","
                 + parseInt(apiblock.filecontractcount) + "," + parseInt(apiblock.totalcontractsize) + "," + newContracts + "," + newTransactions
-                + ")"
+                + ",'" + miningPool + "')"
             sqlBatch.push(SqlFunctions.insertSql("BlockInfo", toAddBlockInfo, height));
 
             // Block as a hash type
