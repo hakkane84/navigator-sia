@@ -421,7 +421,6 @@ function blockRequest(remainingBlocks, poolsDb) {
                 
                 // Mining pool
                 var miningPool = "Unknown" // By default
-                matchPool = false
                 for (var a = 0; a < poolsDb.length; a++) { // For each pool
                     for (var b = 0; b < poolsDb[a].addresses.length; b++) { // For each address
                         if (minerAddress == poolsDb[a].addresses[b]) {
