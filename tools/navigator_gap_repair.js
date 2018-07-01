@@ -48,13 +48,31 @@ console.log("Deleting blocks")
 setTimeout(function() { 
     console.log("Blocks deleted")
     sqlBatch = []
-    blockRequest(blocks, sqlBatch)
+    
+    // Loading poolsDb, database with the known addresses of mining pools
+    var data1 = '';
+    var chunk1;
+    var stream1 = fs.createReadStream("poolAddresses.json")
+    stream1.on('readable', function() { //Function just to read the whole file before proceeding
+        while ((chunk1=stream1.read()) != null) {
+            data1 += chunk1;}
+    });
+    stream1.on('end', function() {
+        if (data1 != "") {
+            var poolsDb = JSON.parse(data1)
+        } else {
+            var poolsDb = [] // Empty array
+        }
+
+        // Main loop
+        blockRequest(blocks, sqlBatch, poolsDb)
+    })
 }, 30000);
 
 
 
 
-function blockRequest(remainingBlocks, sqlBatch) {
+function blockRequest(remainingBlocks, sqlBatch, poolsDb) {
     // The block to index is the first in the the array of remaining blocks
     var block = remainingBlocks[0]
 
@@ -328,7 +346,7 @@ function blockRequest(remainingBlocks, sqlBatch) {
 
 
             if (remainingBlocks.length > 0) { // If more blocks remaining, next request after the delay
-                blockRequest(remainingBlocks, sqlBatch) 
+                blockRequest(remainingBlocks, sqlBatch, poolsDb) 
             } else {
                 saveSqlBatch(sqlBatch)
             }
