@@ -145,13 +145,29 @@ function blockArrayBuild(blocksInDb, consensusBlock, blocksToDelete)  {
     blocks.sort( function(a, b) {return a-b} )
     console.log("Blocks to index: " + blocks.length)
     
-    // Main loop
-    blockRequest(blocks)
+    // Loading poolsDb, database with the known addresses of mining pools
+    var data1 = '';
+    var chunk1;
+    var stream1 = fs.createReadStream("../poolAddresses.json")
+    stream1.on('readable', function() { //Function just to read the whole file before proceeding
+        while ((chunk1=stream1.read()) != null) {
+            data1 += chunk1;}
+    });
+    stream1.on('end', function() {
+        if (data1 != "") {
+            var poolsDb = JSON.parse(data1)
+        } else {
+            var poolsDb = [] // Empty array
+        }
+
+        // Main loop
+        blockRequest(blocks, poolsDb)
+    })
 }
 
 
 
-function blockRequest(remainingBlocks) {
+function blockRequest(remainingBlocks, poolsDb) {
     // The block to index is the first in the the array of remaining blocks
     var block = remainingBlocks[0]
 
@@ -175,7 +191,7 @@ function blockRequest(remainingBlocks) {
                 // its database
                 console.log("Incorrect block retreived. Explorer module might be corrupted. New request in 5 minutes")
                 setTimeout(function() { 
-                    blockRequest(remainingBlocks) 
+                    blockRequest(remainingBlocks, poolsDb) 
                 }, 30000);
             } else {
                 // Check all the transactions in the block
@@ -403,13 +419,27 @@ function blockRequest(remainingBlocks) {
                     minerAddress = "Genesis block"
                 }
                 
+                // Mining pool
+                var miningPool = "Unknown" // By default
+                for (var a = 0; a < poolsDb.length; a++) { // For each pool
+                    for (var b = 0; b < poolsDb[a].addresses.length; b++) { // For each address
+                        if (minerAddress == poolsDb[a].addresses[b]) {
+                            miningPool = poolsDb[a].name
+                            b = poolsDb[a].addresses.length // Finishes the loop
+                        }
+                    }
+                    if (miningPool != "Unknown") {
+                        a = poolsDb.length // Finishes the loop
+                    }
+                }
+                
                 var toAddBlockInfo = "(" + height + "," + timestamp + "," + transactionCount + ",'" + blockHash + "','" + minerAddress + "','"
                     + minerArbitraryData + "'," + parseInt(apiblock.difficulty) + "," + parseInt(apiblock.estimatedhashrate) + "," + parseInt(apiblock.totalcoins) + ","
                     + parseInt(apiblock.siacoininputcount) + "," + parseInt(apiblock.siacoinoutputcount) + "," + parseInt(apiblock.filecontractrevisioncount) + "," + parseInt(apiblock.storageproofcount) + "," 
                     + parseInt(apiblock.siafundinputcount) + "," + parseInt(apiblock.siafundoutputcount) + "," + parseInt(apiblock.activecontractcost) + ","
                     + parseInt(apiblock.activecontractcount) + "," + parseInt(apiblock.activecontractsize) + "," + parseInt(apiblock.totalcontractcost) + ","
                     + parseInt(apiblock.filecontractcount) + "," + parseInt(apiblock.totalcontractsize) + "," + newContracts + "," + newTransactions
-                    + ")"
+                    + ",'" + miningPool + "')"
                 sqlBatch.push(SqlFunctions.insertSql("BlockInfo", toAddBlockInfo, height));
 
                 // Block as a hash type
@@ -440,7 +470,7 @@ function blockRequest(remainingBlocks) {
                 var delay = delaySeconds * 1000
                 if (remainingBlocks.length > 0) { // If more blocks remaining, next request after the delay
                     setTimeout(function() { 
-                        blockRequest(remainingBlocks) 
+                        blockRequest(remainingBlocks, poolsDb) 
                     }, delay);
                 } else {
                     setTimeout(function() { // 5 seconds delay for safety, to avoid possible race conditions
@@ -461,7 +491,7 @@ function blockRequest(remainingBlocks) {
     })
     .catch((err) => {
         console.error(err)
-        blockRequest(remainingBlocks) // Insist if an error
+        blockRequest(remainingBlocks, poolsDb) // Insist if an error
     })
 }
 
@@ -499,8 +529,23 @@ function consensusCheck(dbHeight) {
                     blocksToIndex.push(m)
                 }
 
-                // D - Call main function again
-                blockRequest(blocksToIndex)
+                // D - Reload the pools' database and call main function again
+                var data1 = '';
+                var chunk1;
+                var stream1 = fs.createReadStream("poolAddresses.json")
+                stream1.on('readable', function() { //Function just to read the whole file before proceeding
+                    while ((chunk1=stream1.read()) != null) {
+                        data1 += chunk1;}
+                });
+                stream1.on('end', function() {
+                    if (data1 != "") {
+                        var poolsDb = JSON.parse(data1)
+                    } else {
+                        var poolsDb = [] // Empty array
+                    }
+                    
+                    blockRequest(blocksToIndex, poolsDb)
+                })
 
             }, 5000);
         

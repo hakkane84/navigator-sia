@@ -57,6 +57,7 @@ CREATE TABLE [dbo].[BlockInfo](
 	[TotalContractSize] [numeric](30, 0) NULL,
 	[NewContracts] [smallint] NULL,
 	[NewTx] [smallint] NULL,
+	[MiningPool] [varchar](15) NULL,
  CONSTRAINT [PK_BlockInfo] PRIMARY KEY CLUSTERED 
 (
 	[Height] ASC

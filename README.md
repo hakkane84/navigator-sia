@@ -71,6 +71,7 @@ An optional website frontend is available on /web. Deploy its contents on your f
 *	`/tools/delete_contents.sql` : Deletes ALL the information contained on the tables of the database
 *	`/tools/delete_from_block.sql` : Deletes the contents of a database starting on the specified block and upwards. Useful if you think recent information has been miss-indexed. Customize the height of the block on each of the 8 lines of the script
 *	`/tools/navigator_gap_repair.js` : Deletes and re-indexes the block (or blocks) specified on the `blocks` variable. Invoke in the command line as `node navigator_gap_repair.js`. Useful to repair a specific block
+* `/tools/navigator_miningpools_inserter.js` : updates the database with the mining pool's addresses, according to the contents of the `poolAddresses.json` file
 
 ## Future development directions
 While already functional, Navigator is a work-in-progress project. Besides correcting the natural bugs that might be found over the months following the release, I am committed to make it evolve in several aspects, including the following:
