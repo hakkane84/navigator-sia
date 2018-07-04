@@ -456,7 +456,7 @@ function blockRequest(remainingBlocks, poolsDb) {
                 for (var i = 0; i < sqlBatch.length; i++) {
                     var sqlQuery = sqlQuery + sqlBatch[i] + " "
                 }
-                SqlFunctions.insertFinalSql(sqlQuery)
+                SqlFunctions.insertFinalSql(sqlQuery, sqlBatch)
 
                 // Report
                 console.log("Block added: " + height + " - Txs: " + apiblock.transactions.length + " - SQL queries: " + sqlBatch.length)
