@@ -88,7 +88,9 @@ exports.insertFinalSql= function(sqlQuery) {
             
         }).catch(function (err) {
             //console.log(err);
+            console.log("//////////// The block could not be batch-indexed. Initiating its itemized indexing")
             dbConn.close();
+            itemizedIndexing(sqlBatch)
         });
     }).catch(function (err) {
         console.log(err);
@@ -267,3 +269,50 @@ function lastTxsStatsStep4 (landingArray) {
     }).catch(function (err) {});
 }
 
+
+function itemizedIndexing(sqlBatch) {
+    // This function indexes sequentially each query instead of the whole batch, as a backup plan if the batch fails
+    var failCount = 0
+    var successCount = 0
+    itemizedSql(sqlBatch, failCount, successCount)
+}
+
+function itemizedSql(sqlBatch, failCount, successCount) {
+    // We include jin the SQL database only the first element of the array, and repeat the function for each subsequent element
+    var sqlQuery = sqlBatch[0]
+
+    var dbConn = new sql.ConnectionPool(sqlLogin);
+    dbConn.connect().then(function () {
+        var request = new sql.Request(dbConn);
+        request.query(sqlQuery).then(function (recordSet) {
+            dbConn.close();
+            successCount++
+
+            // Remove one element and repeat
+            sqlBatch.splice(0,1)
+            if (sqlBatch.length > 0) {
+                itemizedSql(sqlBatch, failCount, successCount)
+            } else {
+                // We are done
+                console.log("////// Itemized indexing done. Total insertions: " + successCount + ", number of failed queries: " + failCount)
+            }
+            
+        }).catch(function (err) {
+            //console.log(err);
+            //console.log("/// Query FAILED")
+            failCount++
+            dbConn.close();
+
+            // Remove one element and repeat
+            sqlBatch.splice(0,1)
+            if (sqlBatch.length > 0) {
+                itemizedSql(sqlBatch, failCount, successCount)
+            } else {
+                // We are done
+                console.log("////// Itemized indexing done. Total insertions: " + successCount + ", number of failed queries: " + failCount)
+            }
+        });
+    }).catch(function (err) {
+        console.log(err);
+    });
+}
