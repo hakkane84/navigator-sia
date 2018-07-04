@@ -88,7 +88,9 @@ exports.insertFinalSql= function(sqlQuery) {
             
         }).catch(function (err) {
             //console.log(err);
+            console.log("//////////// The block could not be batch-indexed. Initiating its itemized indexing")
             dbConn.close();
+            itemizedIndexing(sqlBatch)
         });
     }).catch(function (err) {
         console.log(err);
@@ -267,3 +269,9 @@ function lastTxsStatsStep4 (landingArray) {
     }).catch(function (err) {});
 }
 
+
+function itemizedIndexing(sqlBatch) {
+    // This function indexes sequentially each query instead of the whole batch, as a backup plan if the batch fails
+
+
+}
