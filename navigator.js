@@ -439,7 +439,7 @@ function blockRequest(remainingBlocks, poolsDb) {
                     + parseInt(apiblock.siafundinputcount) + "," + parseInt(apiblock.siafundoutputcount) + "," + parseInt(apiblock.activecontractcost) + ","
                     + parseInt(apiblock.activecontractcount) + "," + parseInt(apiblock.activecontractsize) + "," + parseInt(apiblock.totalcontractcost) + ","
                     + parseInt(apiblock.filecontractcount) + "," + parseInt(apiblock.totalcontractsize) + "," + newContracts + "," + newTransactions
-                    + ",'" + miningPool + "')"
+                    + ",'" + miningPool + "'," + parseInt(apiblock.minerfeecount) + ")"
                 sqlBatch.push(SqlFunctions.insertSql("BlockInfo", toAddBlockInfo, height));
 
                 // Block as a hash type
