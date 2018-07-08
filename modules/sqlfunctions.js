@@ -34,7 +34,7 @@ exports.insertSql= function(table, toAdd, toCheck) {
         var sqlQuery = "IF NOT EXISTS (SELECT Height FROM BlockInfo WHERE Height = " + toCheck
             + ") INSERT INTO BlockInfo (Height,Timestamp,TransactionCount,Hash,MinerPayoutAddress,MinerArbitraryData,Difficulty,Hashrate,"
             + "TotalCoins,SiacoinInputCount,SiacoinOutputCount,FileContractRevisionCount,StorageProofCount,SiafundInputCount,SiafundOutputCount,"
-            + "ActiveContractCost,ActiveContractCount,ActiveContractSize,TotalContractCost,TotalContractCount,TotalContractSize,NewContracts,NewTx,MiningPool"
+            + "ActiveContractCost,ActiveContractCount,ActiveContractSize,TotalContractCost,TotalContractCount,TotalContractSize,NewContracts,NewTx,MiningPool,FeeCount"
             + ") VALUES " + toAdd
     } else if (table == "HashTypes") {
         var sqlQuery = "IF NOT EXISTS (SELECT Hash FROM HashTypes WHERE Hash = '" + toCheck
