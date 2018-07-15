@@ -496,6 +496,19 @@ function blockRequest(remainingBlocks, poolsDb) {
 }
 
 
+
+        
+        } else {
+            // Repeat after a delay
+            setTimeout(function() {
+                consensusCheck(dbHeight) 
+            }, consensusCheckTime);
+        }
+
+    })}).catch((err) => {console.error(err); console.log("//// Error on consensus call")}) // Errors of Sia Consensus call
+}
+
+
 function consensusCheck(dbHeight) {
 
     // A - Consensus check: checks periodically the current height of the blockchain, by repeating itself after a delay
@@ -506,7 +519,7 @@ function consensusCheck(dbHeight) {
         saveStatusFile(consensusBlock, dbHeight)
 
         if (consensusBlock > dbHeight) {
-            console.log("New highest block in the blockchain: " + consensusBlock)
+            //console.log("New highest block in the blockchain: " + consensusBlock)
 
             // B - Create the array of new blocks
             var blocksToIndex = []
@@ -556,14 +569,13 @@ function blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks) {
         var request = new sql.Request(dbConn);
         request.query(sqlQuery).then(function (recordSet) {
             dbConn.close();
-            var dbBlock = recordset.recordset[0]
-            console.log("Reviewing block: " + dbBlock)
+            var dbBlock = recordSet.recordset[0]
 
             // Checking with Sia the data of the block:
             sia.connect('localhost:9980')
             .then((siad) => {
                 siad.call({ 
-                    url: '/explorer/blocks/' + blckToReview,
+                    url: '/explorer/blocks/' + blockToReview,
                     method: 'GET'
                 })
                 .then((rawblock) =>  {
@@ -604,7 +616,6 @@ function preIndexing(blocksToIndex, poolsDb, extraBlocks) {
 
     if (extraBlocks.length == 0) {
         // Nothing to delete, we just reindex!
-        console.log("No block rearrangement detected")
         blockRequest(blocksToIndex, poolsDb)
     
     } else {
