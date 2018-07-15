@@ -496,7 +496,6 @@ function blockRequest(remainingBlocks, poolsDb) {
 }
 
 
-
 function consensusCheck(dbHeight) {
 
     // A - Consensus check: checks periodically the current height of the blockchain, by repeating itself after a delay
@@ -509,45 +508,34 @@ function consensusCheck(dbHeight) {
         if (consensusBlock > dbHeight) {
             console.log("New highest block in the blockchain: " + consensusBlock)
 
-            // B - If new blocks, determine blocks to remove (up to 4, for possible rearrangements). The 4 previous to consensusBlock (they might not exist on the DB, it is ok)
-            var blocksToDelete = [(consensusBlock - 1), (consensusBlock - 2), (consensusBlock - 3), (consensusBlock - 4)]
-            SqlFunctions.deleteBlocks(blocksToDelete)
+            // B - Create the array of new blocks
+            var blocksToIndex = []
 
-            setTimeout(function() { // Delay of 5 seconds to allow it to delete blocks and avoid race conditions
+            // C - Adding the new blocks to index
+            for (var m = (dbHeight + 1); m <= consensusBlock; m++) {
+                blocksToIndex.push(m)
+            }
+
+            // D - Reload the pools' database 
+            var data1 = '';
+            var chunk1;
+            var stream1 = fs.createReadStream("poolAddresses.json")
+            stream1.on('readable', function() { //Function just to read the whole file before proceeding
+                while ((chunk1=stream1.read()) != null) {
+                    data1 += chunk1;}
+            });
+            stream1.on('end', function() {
+                if (data1 != "") {
+                    var poolsDb = JSON.parse(data1)
+                } else {
+                    var poolsDb = [] // Empty array
+                }
                 
-                // C - Create the array of new blocks
-                var blocksToIndex = []
-
-                for (var n = 0; n < 4; n++) {
-                    var checkingBlock = consensusBlock - 4 + n
-                    if ((checkingBlock) <= dbHeight) { // Adding blocks that were removed
-                        blocksToIndex.push(checkingBlock)
-                    }
-                }
-                // Next I add the blocks from dbHeight to consensusBlock
-                for (var m = (dbHeight + 1); m <= consensusBlock; m++) {
-                    blocksToIndex.push(m)
-                }
-
-                // D - Reload the pools' database and call main function again
-                var data1 = '';
-                var chunk1;
-                var stream1 = fs.createReadStream("poolAddresses.json")
-                stream1.on('readable', function() { //Function just to read the whole file before proceeding
-                    while ((chunk1=stream1.read()) != null) {
-                        data1 += chunk1;}
-                });
-                stream1.on('end', function() {
-                    if (data1 != "") {
-                        var poolsDb = JSON.parse(data1)
-                    } else {
-                        var poolsDb = [] // Empty array
-                    }
-                    
-                    blockRequest(blocksToIndex, poolsDb)
-                })
-
-            }, 5000);
+                // E - Checking block rearrangements, starting with the dbHeight block and going back as many blocks as there was a change
+                var blockToReview = dbHeight
+                var extraBlocks = []
+                blockReview(blocksToIndex, poolsDb, blockToReview, extraBlocks)
+            })
         
         } else {
             // Repeat after a delay
@@ -559,6 +547,83 @@ function consensusCheck(dbHeight) {
     })}).catch((err) => {console.error(err); console.log("//// Error on consensus call")}) // Errors of Sia Consensus call
 }
 
+
+function blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks) {
+    // This SQL returns the miner poayout address and hash, to later confirm if rearrangements took place
+    var sqlQuery = "SELECT Hash, MinerPayoutAddress FROM BlockInfo WHERE Height = " + blockToReview
+    var dbConn = new sql.ConnectionPool(sqlLogin);
+    dbConn.connect().then(function () {
+        var request = new sql.Request(dbConn);
+        request.query(sqlQuery).then(function (recordSet) {
+            dbConn.close();
+            var dbBlock = recordset.recordset[0]
+            console.log("Reviewing block: " + dbBlock)
+
+            // Checking with Sia the data of the block:
+            sia.connect('localhost:9980')
+            .then((siad) => {
+                siad.call({ 
+                    url: '/explorer/blocks/' + blckToReview,
+                    method: 'GET'
+                })
+                .then((rawblock) =>  {
+                    // Pre-processing the block (had some issues in the past parsing the result, so I rather remove characters from the string)
+                    var stringraw = JSON.stringify(rawblock)
+                    var a = stringraw.substr(0, stringraw.length-1) //This removes the last "}"
+                    var b = a.slice(9, a.length) // Removes first characters
+                    var apiblock = JSON.parse(b)
+
+                    // Checking if the info of the block in the database and the info currently in consensus match
+                    if (dbBlock.Hash == apiblock.blockid && dbBlock.MinerPayoutAddress == apiblock.rawblock.minerpayouts[0].unlockhash) {
+                        // We are done: we will delete the extra blocks, concatenate extra blocks to blocks to index and index all
+                        preIndexing(blocksToIndex, poolsDb, extraBlocks)
+                    } else {
+                        // This block was rearranged: add it to extra blocks and review the previous one
+                        console.log("Block rearrangement detected: " + blockToReview)
+                        extraBlocks.push(blockToReview)
+                        blockToReview--
+                        blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks)
+                    }
+                })
+            }).catch((err) => { // Error fetching the block
+                console.error(err)
+                blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks) // Insist if an error
+            })
+
+        }).catch(function (err) {
+            dbConn.close();
+        });
+    }).catch(function (err) {
+        //console.log(err);
+    });
+}
+
+
+function preIndexing(blocksToIndex, poolsDb, extraBlocks) {
+    // This function orders deleting rearranged blocks and ignites the indexing of the new blocks
+
+    if (extraBlocks.length == 0) {
+        // Nothing to delete, we just reindex!
+        console.log("No block rearrangement detected")
+        blockRequest(blocksToIndex, poolsDb)
+    
+    } else {
+        // A - Deleting blocks
+        console.log("Deleting " + extraBlocks.length + " blocks")
+        SqlFunctions.deleteBlocks(extraBlocks)
+        var delay = extraBlocks.length * 15000
+        setTimeout(function() { // Delay of 15 seconds per block deleted, to avoid race conditions
+            
+            // B - Concatenating and sorting extra blocks
+            blocksToIndex = blocksToIndex.concat(extraBlocks)
+            blocksToIndex.sort(function(a, b){return a-b})
+
+            // C - Igniting indexing
+            blockRequest(blocksToIndex, poolsDb)
+
+        }, delay);
+    }
+}
 
 
 function saveStatusFile(consensusBlock, lastBlockDb) {
