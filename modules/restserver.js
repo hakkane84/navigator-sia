@@ -54,6 +54,7 @@ var IPblackList = [
 ]
 
 
+
 // Routes for the API
 // =============================
 
@@ -130,7 +131,7 @@ router.use(function(req, res, next) {
 });
 
 // Test route to make sure everything is working (accessed at GET http://localhost:3000/navigator-api)
-router.get('/', function(req, res) {
+router.get('/navigator-api/', function(req, res) {
     res.json({ message: "Welcome to the API of of Navigator on SiaStats.info. Check siastats.info/api for documentation"});   
 });
 
@@ -138,7 +139,7 @@ router.get('/', function(req, res) {
 // All the requests start requesting a hash type, and depending on it, further SQL queries will be done
 // For details about the flow of the queries, check the schematic on the project documentation
 // Routes for /hash/:hash_id (accessed at GET http://localhost:3000/navigator-api/hash/:hash_id)
-router.route('/hash/:hash_id').get(function(req, res) {
+router.route('/navigator-api/hash/:hash_id').get(function(req, res) {
     var initialTime = new Date();
 
     // Checking the sanity of the request to avoid SQL injections
@@ -515,7 +516,7 @@ router.route('/hash/:hash_id').get(function(req, res) {
 // BATCH SEARCH ROUTES HERE AND OTHERS
 
 // Checks a batch of addresses (accessed at POST http://localhost:3500/api/addresses)
-router.route('/addresses')
+router.route('/navigator-api/addresses')
 .post(function(req, res) {
     var initialTime = new Date();
     var addresses = req.body.query;
@@ -621,7 +622,7 @@ router.route('/addresses')
 });
 
 // Checks a processed file of host contracts (accessed at POST http://localhost:3500/navigator-api/host-contracts)
-router.route('/host-contracts')
+router.route('/navigator-api/host-contracts')
 .post(function(req, res) {
     var initialTime = new Date();
     var file = req.body.query;  
@@ -733,7 +734,7 @@ router.route('/host-contracts')
 });
 
 // Status request: returns the current highest block in the blockchain, in the database and the timestamp of the last check
-router.get('/status', function(req, res) {
+router.get('/navigator-api/status', function(req, res) {
     // Logging activity
     dayStatusCalls++
     hourStatusCalls++
@@ -754,7 +755,7 @@ router.get('/status', function(req, res) {
 });
 
 // Landing page stats: returns the last 10 TX of each kind and the distribution of the last 10 000 transactions of the network
-router.get('/landing', function(req, res) {
+router.get('/navigator-api/landing', function(req, res) {
     // Reads the file landingpagedata.json
     var data = '';
     var chunk;
@@ -771,8 +772,24 @@ router.get('/landing', function(req, res) {
 });
 
 
+// Mock home page of the :3500 port, in order to add some metadata for web crawlers
+router.get('/', function(req, res) {
+    var mimeType = "text/html"
+    res.writeHead(200, mimeType);
+    var fileStream = fs.createReadStream("./mock_index.html");
+    fileStream.pipe(res);
+});
+
+// Robots.txt to avoid web crawlers to check thousands of API endpoints per hour
+router.get('/robots.txt', function(req, res) {
+    res.type('text/plain')
+    res.send("User-agent: *\nDisallow: /navigator-api")
+});
+
+
+
 // All the routes will be prefixed with /navigator-api
-app.use('/navigator-api', router);
+app.use('/', router);
 
 // your express configuration here
 
@@ -790,9 +807,7 @@ console.log("----------------------------------------------")
 var cronJob = cron.job("00 00 * * * *", function(){
     // Hour statistics of usage
     var hourAPIcalls = hourHashCalls - hourStatusCalls - hourBlockedCalls
-    console.log("")
     console.log("+++ Usage in the last hour: " + hourAPIcalls + " API calls, " + hourStatusCalls + " web calls +++")
-    console.log("")
 
     hourHashCalls = 0
     hourStatusCalls = 0
