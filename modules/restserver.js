@@ -97,7 +97,9 @@ router.use(function(req, res, next) {
         if (dayIPrequests[b].ip == req.connection.remoteAddress) {
             IpMatch = true
             if (dayIPrequests[b].count > maxRequestsPerIP) {
-                console.log("IP blocked for excessive requests: " + req.connection.remoteAddress)
+                if (IpIsAllowed = false) { // Adds this log line only if it is not an IP already blacklisted
+                    console.log("IP blocked for excessive requests: " + req.connection.remoteAddress)
+                }
                 IpIsAllowed = false
             } else {
                 dayIPrequests[b].count++ // Adds to the count of requests
