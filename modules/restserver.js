@@ -40,6 +40,8 @@ var dayHashCalls = 0
 var dayStatusCalls = 0
 var hourHashCalls = 0
 var hourStatusCalls = 0
+var dayBlockedCalls = 0
+var hourBlockedCalls = 0
 var dayIPrequests = [] // Logs the amount of requests from each IP, to band them if misusing the API
 var maxRequestsPerIP = 300 // Threshold for banning an IP for the rest of the day
 var IPwhiteList = [
@@ -121,6 +123,8 @@ router.use(function(req, res, next) {
         next(); // make sure we go to the next routes and don't stop here
     } else {
         //console.log("IP blocked: " + req.connection.remoteAddress)
+        dayBlockedCalls++
+        hourBlockedCalls++
         res.json({ message: "You have reached the max daily requests to this API, stablished to avoid unnecesary abuse. If you need unlimited access, just contact siastats@outlook.com and I'll grant it without cost"});
     }
 });
@@ -785,19 +789,20 @@ console.log("----------------------------------------------")
 
 var cronJob = cron.job("00 00 * * * *", function(){
     // Hour statistics of usage
-    var hourAPIcalls = hourHashCalls - hourStatusCalls
-    console.log("--------------------------------------------")
+    var hourAPIcalls = hourHashCalls - hourStatusCalls - hourBlockedCalls
+    console.log("")
     console.log("+++ Usage in the last hour: " + hourAPIcalls + " API calls, " + hourStatusCalls + " web calls +++")
-    console.log("--------------------------------------------")
+    console.log("")
 
     hourHashCalls = 0
     hourStatusCalls = 0
+    hourBlockedCalls = 0
 })
 cronJob.start();
 
 var cronJob2 = cron.job("10 00 00 * * *", function(){
     // Daily statistics of usage
-    var dayAPIcalls = dayHashCalls - dayStatusCalls
+    var dayAPIcalls = dayHashCalls - dayStatusCalls - dayBlockedCalls
     console.log()
     console.log("----------------------------------------------------------------------------")
     console.log("+++                     NAVIGATOR DAILY USAGE REPORT                     +++")
@@ -811,6 +816,7 @@ var cronJob2 = cron.job("10 00 00 * * *", function(){
 
     dayHashCalls = 0
     dayStatusCalls = 0
+    dayBlockedCalls = 0
     dayIPrequests = [] // Resets the list of IP requests
 })
 cronJob2.start();
