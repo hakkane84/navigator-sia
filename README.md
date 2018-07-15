@@ -36,7 +36,7 @@ The following node NMP modules dependencies manually installed:
 *	`mssql`
 *	`express`
 *	`body-parser`
-*	`morgan`
+*	`cron`
 *	`forever` is optional but highly recommended
 
 For the website frontend to work properly (not necessary if only the API server is going to be used): 
