@@ -43,14 +43,14 @@ var hourStatusCalls = 0
 var dayBlockedCalls = 0
 var hourBlockedCalls = 0
 var dayIPrequests = [] // Logs the amount of requests from each IP, to band them if misusing the API
-var maxRequestsPerIP = 300 // Threshold for banning an IP for the rest of the day
+var maxRequestsPerIP = 1500 // Threshold for banning an IP for the rest of the day
 var IPwhiteList = [
     "::ffff:192.168.1.1" // Local IP
 ]
 var IPblackList = [
-    "::ffff:66.249.66.199", // Google bot. Otherwise, it will crawl the whole database at a rate of 30 queries per minute
-    "::ffff:66.249.66.201", // Google bot
-    "::ffff:66.249.66.203" // Google bot
+    //"::ffff:66.249.66.199", // Google bot. Otherwise, it will crawl the whole database at a rate of 30 queries per minute
+    //"::ffff:66.249.66.201", // Google bot
+    //"::ffff:66.249.66.203" // Google bot
 ]
 
 
@@ -126,7 +126,8 @@ router.use(function(req, res, next) {
         //console.log("IP blocked: " + req.connection.remoteAddress)
         dayBlockedCalls++
         hourBlockedCalls++
-        res.json({ message: "You have reached the max daily requests to this API, stablished to avoid unnecesary abuse. If you need unlimited access, just contact siastats@outlook.com and I'll grant it without cost"});
+        res.status(429);
+        res.send("You have reached the cap of 1500 daily requests to this API, established to avoid unnecesary abuse. For unlimited access, please contact siastats@outlook.com")
     }
 });
 
@@ -780,11 +781,12 @@ router.get('/', function(req, res) {
     fileStream.pipe(res);
 });
 
+// OPTIONAL
 // Robots.txt to avoid web crawlers to check thousands of API endpoints per hour
-router.get('/robots.txt', function(req, res) {
-    res.type('text/plain')
-    res.send("User-agent: *\nDisallow: /navigator-api")
-});
+//router.get('/robots.txt', function(req, res) {
+    //res.type('text/plain')
+    //res.send("User-agent: *\nDisallow: /navigator-api")
+//});
 
 
 
