@@ -502,11 +502,8 @@ router.route('/navigator-api/hash/:hash_id').get(function(req, res) {
 
                 
                 } else { // Sending an empty response
-                    res.send(resJson);
-
-                    // Log
-                    timeDelta = new Date() - initialTime
-                    console.log("GET: " + req.params.hash_id + " - " + timeDelta + "ms")
+                    // Check the mempool for unconfirmed TX
+                    searchMempool(hashReq, initialTime, res, req)
                 }
 
             } 
@@ -882,4 +879,41 @@ function sanitySql(hash) {
     }
     
     return hash
+}
+
+
+function searchMempool(hash, initialTime, res, req) {
+    // This function searches the hash on the mempool: if exists, will return an "unconfirmed" type. Otherwise, an empty object
+    
+    sia.connect('localhost:9980')
+    .then((siad) => {
+        siad.call({ 
+            url: '/tpool/raw/' + hash,
+            method: 'GET'
+        })
+        .then((response) =>  {
+            
+            // If there is a response from this call, the TX is in the mempool
+            var resJson = [{
+                "Type": "unconfirmed",
+                "MsterHash": hash
+            }]
+            res.send(resJson);
+
+            // Log
+            timeDelta = new Date() - initialTime
+            console.log("GET: " + req.params.hash_id + " (unconfirmed) - " + timeDelta + "ms")
+    
+        }).catch(function (err) {
+            
+            // Id there is an error from this call, the TX does not exist on the mempool
+            var response = []
+            res.send(response);
+
+            // Log
+            timeDelta = new Date() - initialTime
+            console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
+
+        })
+    })
 }
