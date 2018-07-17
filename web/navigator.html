@@ -603,7 +603,12 @@
                                                     renderAddressList(txs, auxblock, container)
 
                                                     adjustWidth()
-                                                
+                                                    
+                                                } else if (data[0].Type == "unconfirmed") {
+
+                                                    renderUnconfirmed()
+                                                    adjustWidth()
+                                                    
                                                 } else {
                                                     // Scheme of the transaction
                                                     renderScheme(data)
@@ -653,7 +658,11 @@
 
                                     }
                                     
-
+                                    
+                                    function renderUnconfirmed() {
+                                        
+                                    }
+                                    
 
                                     function renderLandingPage(auxblock, landing) {
                                         // 4 tables with recent elements in the blockchain
@@ -950,11 +959,18 @@
                                         else if (data[0].Type == "host ann") {
                                             hashType = "Host announcement"
                                             document.getElementById('header_logo').src = "assets/nav/hostann.png"}
+                                        else if (data[0].Type == "unconfirmed") {
+                                            hashType = "Unconfirmed transaction"
+                                            document.getElementById('header_logo').src = "assets/nav/unconfirmed.png"}
                                         document.getElementById("header2").innerHTML = hashType
                                         document.getElementById("header3").innerHTML = shortHash(searchQuery)
 
                                         // Confirmations of the TX, unless the hash is an address
-                                        if (data[0].Type != "address") {
+                                        if (data[0].Type == "unconfirmed") {
+                                            document.getElementById("header4").innerHTML = "unconfirmed"
+                                            document.getElementById("header5").style.backgroundColor = "#dd5e5e"
+                                            document.getElementById("header6").style.backgroundColor = "#dd5e5e"
+                                        } else if (data[0].Type != "address") {
                                             var confirmationsNum = auxblock.consensusblock - data[1].Height + 1
                                             if (confirmationsNum > 72) {confirmationsNum = "72+"}
                                             document.getElementById("header4").innerHTML = confirmationsNum + " confirmations"
