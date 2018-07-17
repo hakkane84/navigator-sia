@@ -907,12 +907,43 @@ function searchMempool(hash, initialTime, res, req) {
         }).catch(function (err) {
             
             // Id there is an error from this call, the TX does not exist on the mempool
-            var response = []
-            res.send(response);
+            // However, during a few seconds, th TX may be not in the mempool once integrated on a block but not yet on my SQL database, so I
+            // do this second call to /tpool/confirmed, and return a temporal "unconfirmed" if the response is "true" (next inquire will return 
+            // the full info once integrated on the SQL database)
 
-            // Log
-            timeDelta = new Date() - initialTime
-            console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
+            sia.connect('localhost:9980')
+            .then((siad) => {
+                siad.call({ 
+                    url: '/tpool/confirmed/' + hash,
+                    method: 'GET'
+                })
+                .then((response) =>  {
+
+                    if (response.confirmed == true) {
+                        var resJson = [{
+                            "Type": "unconfirmed",
+                            "MasterHash": hash
+                        }]
+                        res.send(resJson);
+
+                        // Log
+                        timeDelta = new Date() - initialTime
+                        console.log("GET: " + req.params.hash_id + " (confirmed, not in DB) - " + timeDelta + "ms")
+                    
+                    } else {
+                        // The TX definetely does not exist on the blockchain
+                        var responseToSend = []
+                        res.send(responseToSend);
+            
+                        // Log
+                        timeDelta = new Date() - initialTime
+                        console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
+                    }
+                
+                }).catch(function (err) {
+                    console.log(err);
+                })
+            })
 
         })
     })
