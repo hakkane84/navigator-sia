@@ -607,7 +607,6 @@
                                                 } else if (data[0].Type == "unconfirmed") {
 
                                                     renderUnconfirmed()
-                                                    adjustWidth()
                                                     
                                                 } else {
                                                     // Scheme of the transaction
@@ -660,7 +659,38 @@
                                     
                                     
                                     function renderUnconfirmed() {
-                                        
+                                        // Renders Unconfirmed message
+                                        document.getElementById("inset").style.display = 'none'
+
+                                        var now = new Date()
+                                        var hour = now.getHours();
+                                        if (hour < 10) {hour = "0" + hour}
+                                        var min = now.getMinutes();
+                                        if (min < 10) {min = "0" + min}
+                                        var sec = now.getSeconds();
+                                        if (sec < 10) {sec = "0" + sec}
+                                        var time = hour + ':' + min + ':' + sec 
+
+                                        var div = document.createElement('div');
+                                        div.className = 'row';
+                                        var tableCode = '<div style="height: 100px"></div>'
+                                                + '<div style="width: 600; margin: 0 auto; padding: 0 25">'
+                                                    + '<div style="width: 106; color: #9eb4a9; float: left;">'
+                                                        + '<img src="assets/nav/clock.png" alt="clock" height="150" width="106"></div>'
+                                                    + '<div style="width: 480; color: #9eb4a9; text-align: left; float: right">'
+                                                        + '<span style="font-size: 40">Unconfirmed transaction<br></span>'
+                                                        + '<span style="font-size: 20">The transaction was broadcated to the network and it is waiting to be included in a block<br></span>'
+                                                        + '<span style="font-size: 20">This page will refresh every minute and show the full TX information once confirmed. Last check: ' + time + '</span>'
+                                                    + '</div>'
+                                                + '</div>'
+                                            + '<div style="height: 300px"></div>'
+                                        div.innerHTML = tableCode
+                                        document.getElementById('content').appendChild(div);
+
+                                        // Reloads the page after 1 minute
+                                        setTimeout(function(){
+                                            location.reload()
+                                        }, 60000);
                                     }
                                     
 
@@ -967,7 +997,7 @@
 
                                         // Confirmations of the TX, unless the hash is an address
                                         if (data[0].Type == "unconfirmed") {
-                                            document.getElementById("header4").innerHTML = "unconfirmed"
+                                            document.getElementById("header4").innerHTML = "Unconfirmed"
                                             document.getElementById("header5").style.backgroundColor = "#dd5e5e"
                                             document.getElementById("header6").style.backgroundColor = "#dd5e5e"
                                         } else if (data[0].Type != "address") {
