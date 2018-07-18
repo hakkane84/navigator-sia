@@ -884,67 +884,80 @@ function sanitySql(hash) {
 
 function searchMempool(hash, initialTime, res, req) {
     // This function searches the hash on the mempool: if exists, will return an "unconfirmed" type. Otherwise, an empty object
+
+    // Only if the hash is 64 characters long (otherwise, it is an address or a block)
+    if (hash.length == 64) {
     
-    sia.connect('localhost:9980')
-    .then((siad) => {
-        siad.call({ 
-            url: '/tpool/raw/' + hash,
-            method: 'GET'
-        })
-        .then((response) =>  {
-            
-            // If there is a response from this call, the TX is in the mempool
-            var resJson = [{
-                "Type": "unconfirmed",
-                "MsterHash": hash
-            }]
-            res.send(resJson);
-
-            // Log
-            timeDelta = new Date() - initialTime
-            console.log("GET: " + req.params.hash_id + " (unconfirmed) - " + timeDelta + "ms")
-    
-        }).catch(function (err) {
-            
-            // Id there is an error from this call, the TX does not exist on the mempool
-            // However, during a few seconds, th TX may be not in the mempool once integrated on a block but not yet on my SQL database, so I
-            // do this second call to /tpool/confirmed, and return a temporal "unconfirmed" if the response is "true" (next inquire will return 
-            // the full info once integrated on the SQL database)
-
-            sia.connect('localhost:9980')
-            .then((siad) => {
-                siad.call({ 
-                    url: '/tpool/confirmed/' + hash,
-                    method: 'GET'
-                })
-                .then((response) =>  {
-
-                    if (response.confirmed == true) {
-                        var resJson = [{
-                            "Type": "unconfirmed",
-                            "MasterHash": hash
-                        }]
-                        res.send(resJson);
-
-                        // Log
-                        timeDelta = new Date() - initialTime
-                        console.log("GET: " + req.params.hash_id + " (confirmed, not in DB) - " + timeDelta + "ms")
-                    
-                    } else {
-                        // The TX definetely does not exist on the blockchain
-                        var responseToSend = []
-                        res.send(responseToSend);
-            
-                        // Log
-                        timeDelta = new Date() - initialTime
-                        console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
-                    }
-                
-                }).catch(function (err) {
-                    console.log(err);
-                })
+        sia.connect('localhost:9980')
+        .then((siad) => {
+            siad.call({ 
+                url: '/tpool/raw/' + hash,
+                method: 'GET'
             })
+            .then((response) =>  {
+                
+                // If there is a response from this call, the TX is in the mempool
+                var resJson = [{
+                    "Type": "unconfirmed",
+                    "MasterHash": hash
+                }]
+                res.send(resJson);
 
+                // Log
+                timeDelta = new Date() - initialTime
+                console.log("GET: " + req.params.hash_id + " (unconfirmed) - " + timeDelta + "ms")
+        
+            }).catch(function (err) {
+                
+                // Id there is an error from this call, the TX does not exist on the mempool
+                // However, during a few seconds, th TX may be not in the mempool once integrated on a block but not yet on my SQL database, so I
+                // do this second call to /tpool/confirmed, and return a temporal "unconfirmed" if the response is "true" (next inquire will return 
+                // the full info once integrated on the SQL database)
+
+                sia.connect('localhost:9980')
+                .then((siad) => {
+                    siad.call({ 
+                        url: '/tpool/confirmed/' + hash,
+                        method: 'GET'
+                    })
+                    .then((response) =>  {
+
+                        if (response.confirmed == true) {
+                            var resJson = [{
+                                "Type": "unconfirmed",
+                                "MasterHash": hash
+                            }]
+                            res.send(resJson);
+
+                            // Log
+                            timeDelta = new Date() - initialTime
+                            console.log("GET: " + req.params.hash_id + " (confirmed, not in DB) - " + timeDelta + "ms")
+                        
+                        } else {
+                            // The TX definetely does not exist on the blockchain
+                            var responseToSend = []
+                            res.send(responseToSend);
+                
+                            // Log
+                            timeDelta = new Date() - initialTime
+                            console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
+                        }
+                    
+                    }).catch(function (err) {
+                        console.log(err);
+                    })
+                })
+
+            })
         })
-    })
+    
+    } else {
+        // It is not 64 characters-long, just return an empty array
+        var responseToSend = []
+        res.send(responseToSend);
+
+        // Log
+        timeDelta = new Date() - initialTime
+        console.log("GET: " + req.params.hash_id + " (not found) - " + timeDelta + "ms")
+    }
 }
