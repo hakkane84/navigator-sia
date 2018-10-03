@@ -488,9 +488,13 @@ function blockRequest(remainingBlocks, poolsDb) {
                 }
             }
         })
+        .catch((err) => {
+            console.log("// Error retreiving block: " + block)
+            blockRequest(remainingBlocks, poolsDb) // Insist if an error
+        })
     })
     .catch((err) => {
-        console.error(err)
+        console.error("// Error connecting to Sia. Block: " + block)
         blockRequest(remainingBlocks, poolsDb) // Insist if an error
     })
 }
