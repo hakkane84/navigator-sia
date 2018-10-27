@@ -7,8 +7,8 @@ var poolsFilePath = "../poolAddresses.json"
 var sqlLogin = { 
     server: 'localhost',
     database: 'navigator2',
-    user: 'keops',
-    password: 'Fulgor2740',
+    user: 'xxx',
+    password: 'xxx',
     port: 1433,
     connectionTimeout: 600000,
     requestTimeout: 600000,
