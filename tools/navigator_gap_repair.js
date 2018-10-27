@@ -18,8 +18,8 @@ consensusCheckTime = 20000
 var sqlLogin = {
     server: 'localhost',
     database: 'navigator',
-    user: 'keops',
-    password: 'Fulgor2740',
+    user: 'xxx',
+    password: 'xxx',
     port: 1433,
     connectionTimeout: 60000,
     requestTimeout: 60000,
