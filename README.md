@@ -6,6 +6,9 @@ An advanced blockchain explorer for the Sia network, built on Node.js + SQL
 ## General disclaimer
 While I have done my best to make the code reliable and easy to understand with multiple comments, I need to clarify I am not a professional programmer. As such, it is entirely possible that I haven’t followed good coding practices or conventions. Also, this is the first public repository I open. Considering these aspects, I apologize in advance for possible rough edges and parts of the code difficult to understand or unoptimized. Speaking clearly. the code will look ugly, but in my hands,  it works as expected. Also, do not expect constant updates on the go as I correct stuff or add features. However, from time to time I will try to update this repository with the most updated build.
 
+## License
+This software is offered as open source code with the aim to allow the proliferation of high-quality Sia blockchain explorer websites. The license is GNU AGPL v3.0, what means that if you run a modified version of the code in your server, you are demanded to publish its modified code, preserving this same license and the code ownership rights. This is meant to ensure the pogress and improvement of this blockchain explorer and its public availability. Check the License file for full details.
+
 ## Description and components
 Navigator is a complete blockchain explorer solution for the Sia decentralized storage network. It includes advanced capabilities like discerning types of transactions depending on their finality, checking merged balances of up to 1000 addresses or file contract analysis for hosts for up to 1000 simultaneous contracts.
 
