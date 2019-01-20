@@ -500,19 +500,6 @@ function blockRequest(remainingBlocks, poolsDb) {
 }
 
 
-
-        
-        } else {
-            // Repeat after a delay
-            setTimeout(function() {
-                consensusCheck(dbHeight) 
-            }, consensusCheckTime);
-        }
-
-    })}).catch((err) => {console.error(err); console.log("//// Error on consensus call")}) // Errors of Sia Consensus call
-}
-
-
 function consensusCheck(dbHeight) {
 
     // A - Consensus check: checks periodically the current height of the blockchain, by repeating itself after a delay
