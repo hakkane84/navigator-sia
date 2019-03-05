@@ -68,9 +68,20 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     // Receivers info
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siafundoutputs.length; i++) { // in case of several receivers
         var receiverHash = apiblock.transactions[n].rawtransaction.siafundoutputs[i].unlockhash
-        var receiverAmount = apiblock.transactions[n].rawtransaction.siafundoutputs[i].value
-        addressesImplicated.push({"hash": receiverHash, "sc": 0, "sf": receiverAmount})
+        var receiverAmount = apiblock.transactions[n].rawtransaction.siafundoutputs[i].value)
         totalSFtransacted = totalSFtransacted + parseInt(receiverAmount)
+        
+        // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
+        var receiverRepeatedBool = false
+        for (k = 0; k < addressesImplicated.length; k++) {
+            if (receiverHash == addressesImplicated[k].hash) { // Merging amounts
+                addressesImplicated[k].sf = addressesImplicated[k].sf + receiverAmount
+                receiverRepeatedBool = true
+            }
+        }
+        if (receiverRepeatedBool == false) { // If address not repeated, then add the operation
+            addressesImplicated.push({"hash": receiverHash, "sc": 0, "sf": receiverAmount})
+        }
     }
 
     // Synonyms on the receiver TX
