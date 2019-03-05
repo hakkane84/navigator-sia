@@ -22,8 +22,19 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siacoinoutputs.length; i++) { // in case of several receivers
         var receiverHash = apiblock.transactions[n].rawtransaction.siacoinoutputs[i].unlockhash
         var receiverAmount = parseInt(apiblock.transactions[n].rawtransaction.siacoinoutputs[i].value)
-        addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
         totalSCtransacted = totalSCtransacted + receiverAmount
+        
+        // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
+        var receiverRepeatedBool = false
+        for (k = 0; k < addressesImplicated.length; k++) {
+            if (receiverHash == addressesImplicated[k].hash) { // Merging amounts
+                addressesImplicated[k].sc = addressesImplicated[k].sc + receiverAmount
+                receiverRepeatedBool = true
+            }
+        }
+        if (receiverRepeatedBool == false) { // If address not repeated, then add the operation
+            addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
+        }
     }
     // Synonyms on the receiver TX
     synonymHahses.push(apiblock.transactions[n].id)
@@ -170,8 +181,19 @@ exports.scSingleTransaction = function(apiblock, n, height, timestamp) {
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siacoinoutputs.length; i++) { // in case of several receivers
         var receiverHash = apiblock.transactions[n].rawtransaction.siacoinoutputs[i].unlockhash
         var receiverAmount = parseInt(apiblock.transactions[n].rawtransaction.siacoinoutputs[i].value)
-        addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
         totalSCtransacted = totalSCtransacted + receiverAmount
+        
+        // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
+        var receiverRepeatedBool = false
+        for (k = 0; k < addressesImplicated.length; k++) {
+            if (receiverHash == addressesImplicated[k].hash) { // Merging amounts
+                addressesImplicated[k].sc = addressesImplicated[k].sc + receiverAmount
+                receiverRepeatedBool = true
+            }
+        }
+        if (receiverRepeatedBool == false) { // If address not repeated, then add the operation
+            addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
+        }
     }
 
     // Senders
