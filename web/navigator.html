@@ -2358,6 +2358,7 @@
                                     else {
                                         decimal = decimal.toFixed(2) * 100
                                         decimal = decimal.toFixed(0)
+                                        if (decimal < 10) {decimal = "0" + decimal} // Avoids a 0.05 to be presented as 0.5
                                     }
                                     readableNumber = sign + readableNumber + "." + decimal
                                     return readableNumber
