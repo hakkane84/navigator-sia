@@ -354,8 +354,10 @@ exports.revisionProcess = function(apiblock, n, height, timestamp) {
     // Tx and synonym as a hash types
     var toAddHashTypes = "('" + masterHash + "','revision','" + masterHash + "')"
     newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, masterHash))
-    var toAddHashTypes2 = "('" + synonymHash + "','revision','" + masterHash + "')"
-    newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes2, masterHash))
+    if (synonymHash != "" && synonymHash != null) {
+        var toAddHashTypes2 = "('" + synonymHash + "','revision','" + masterHash + "')"
+        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes2, synonymHash))
+    }
     
     // Tx inside a block
     var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','revision'," + totalTransacted + ",0)"
