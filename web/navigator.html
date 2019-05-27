@@ -1635,8 +1635,9 @@
 
                                         if (data[0].Type == "contract") {
                                                 // SiaFund fees
-                                                var sfFees = (data[1].RenterValue + data[1].HostValue) * 0.039
-                                                var feesPercentage = (sfFees / data[1].RenterValue * 100).toFixed(2)
+                                                var sfFees = (data[1].ValidProof1Value + data[1].ValidProof2Value) * 0.039
+                                                var feesPercentage = (sfFees / (data[1].ValidProof1Value + data[1].ValidProof2Value + data[1].Fees 
+                                                    + sfFees - data[1].HostValue) * 100).toFixed(2) // This avoid some errors on contracts formed by `us`
                                                 var feesCell = readable(sfFees) + " SC <font size=2>(" + feesPercentage + "% of the renter's allowance)</font>"
                                                 //feesCell = feesPercentage
                                                 var tableCode = tableCode
