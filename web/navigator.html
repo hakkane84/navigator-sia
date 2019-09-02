@@ -2335,10 +2335,30 @@
                                     } else {
                                         var sign = ""
                                     }
-                                    integer = Math.round(number)
+                                    integer = Math.floor(number)
                                     decimal = number - integer
+                                    
+                                    // The decimals
+                                    if (Math.abs(original) < 1) {
+                                        decimal = decimal.toFixed(4)
+                                        decimal = decimal.slice(2)
+                                        if (decimal == 10000) {
+                                            decimal = "00"
+                                            integer++
+                                        }
+                                    }
+                                    else {
+                                        decimal = decimal.toFixed(2) * 100
+                                        decimal = decimal.toFixed(0)
+                                        if (decimal < 10) {decimal = "0" + decimal} // Avoids a 0.05 to be presented as 0.5
+                                        if (decimal == 100) { // Avoids that 1.99 becomes 1.100
+                                            decimal = "00"
+                                            integer++
+                                        }
+                                    }
+                                    
+                                    // Segmenting the integer part
                                     numTxt = integer.toString()
-
                                     var segments = []
                                     while (numTxt.length > 3) {
                                         var s = numTxt.slice(-3)
@@ -2351,20 +2371,11 @@
                                         readableNumber = readableNumber + segments[n]
                                         if (n > 0) {readableNumber = readableNumber + " "}
                                     }
-                                    // The decimals
-                                    if (Math.abs(original) < 1) {
-                                        decimal = decimal.toFixed(4)
-                                        decimal = decimal.slice(2)
-                                    }
-                                    else {
-                                        decimal = decimal.toFixed(2) * 100
-                                        decimal = decimal.toFixed(0)
-                                        if (decimal < 10) {decimal = "0" + decimal} // Avoids a 0.05 to be presented as 0.5
-                                    }
+
                                     readableNumber = sign + readableNumber + "." + decimal
                                     return readableNumber
-                                }
-
+                                }    
+                            
                                 function shortHash(hash) {
                                     if ($(window).width() < 800) {
                                         hash = hash.slice(0, 40) + "..."
