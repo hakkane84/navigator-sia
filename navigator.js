@@ -1,643 +1,550 @@
+// Navigator-Sia: an advanced blockchain explorer for the Sia network
+// Github: https://github.com/hakkane84/navigator-sia
+// License: GNU AGPLv3
+// Author: Salvador Herrera (keops_cc@outlook.com)
+
+var fs = require('fs');
+var stripJsonComments = require('strip-json-comments')
+
+// Load configuration file
+var rawFile = fs.readFileSync("config.json").toString()
+var config = JSON.parse(stripJsonComments(rawFile))
+
+// Loads all the parameters and functions, from the external params.js module
+var Params = require('./modules/params.js')
+var params = Params.Params(config, "./")
+
+// Rest of scripts
+var ExchangeRates = require('./modules/exchangerates.js')
+var Commons = require('./modules/commons.js')
+var SqlAsync = require('./modules/sql_async.js')
+var Indexer = require("./modules/indexer.js")
+var Mempool = require("./modules/mempool.js")
+var SqlComposer = require("./modules/sql_composer.js")
+var Restserver = require('./modules/restserver.js')
+var Watchdog = require('./modules/watchdog.js')
+var WebInjector = require("./modules/webinjector.js")
+
+// STARTING
+var currentdate = new Date(); 
+var datetime = currentdate.getDate() + "/"
+    + (currentdate.getMonth()+1)  + "/" 
+    + currentdate.getFullYear() + " - "  
+    + currentdate.getHours() + ":"  
+    + currentdate.getMinutes() + ":" 
+    + currentdate.getSeconds();
 console.log("======================================================")
 console.log("                  STARTING NAVIGATOR")
 console.log("======================================================")
+console.log()
+console.log("Logging started: " + datetime)
 
-// Dependencies
-var sia = require('C:/nodejs/node_modules/sia.js');
-var fs = require('fs');
-var sql = require('C:/nodejs/node_modules/mssql');
-
-// Load external modules
-var SqlFunctions = require('./modules/sqlfunctions.js')
-var Siafunds = require('./modules/siafunds.js')
-var Siacoins = require('./modules/siacoins.js')
-var FileContracts = require('./modules/filecontracts.js')
-
-// Parameters for accessing the SQL database (Customize also in modules/sqlfunctions.js)
-var sqlLogin = {
-    server: 'localhost',
-    database: 'navigator',
-    user: 'your_user', // CHANGE THIS
-    password: 'your_password', // CHANGE THIS
-    port: 1433,
-    connectionTimeout: 60000,
-    requestTimeout: 60000,
-    pool: {
-        max: 100,
-        min: 0,
-        idleTimeoutMillis: 30000
-    }
-};
-
-// GLOBAL PARAMETERS
-// Delay between blocks (avoids the SQL controller choking), as number of requests per second. Default: 500
-var queriesPerSecond = 500
-// Time between sia API consensus calls to check the presence of a new block, in milliseconds. Default: 20000
-consensusCheckTime = 20000
-// Certain blocks are impossible to be indexed as Sia.js always return an ESOCKETTIMEDOUT. This aray contains those to be skipped
-blocksToSkip = [34258, 34393, 34396, 34571, 34667, 34683, 137404]
+// Informing the user if Navigator is using a local Sia node or a network of Routers
+if (params.useRouters == false) {
+    console.log("* Navigator will use a local Sia instance in port 9980")
+} else {
+    console.log("* Navigator is using a network of " + params.siaRouters.length + " Routers")
+}
 
 
-
-// Scheme of the program:
-// 0- Launch REST server
-// 1- Retrieve consensus block
-// 2- Retrieve blocks in the database
-// 2b- Delete the last 4 blocks for sanity
-// 3- Build the array of blocks to index
-// 4- On main loop, upon reaching consensus block instead of iterate again, go to a consensusCheck function
-// 4b- Create tabbles of last TX and TX distribution chart data
-// 5- If last indexed block < consunsus, do not iterate again in this function and instead build a new array to index
-// 6- Delete the last 4 blocks
-// 7- Iterate again on main loop, go to 4 and repeat infinitely
+// Script overview
+// 0 - Assesing if the user is ordering a repair of the database
+// 1 - Maintenance: a timeout and checking if the database tables exist. If not, create them
+// 2 - On startup, find the blocks that need to be indexed
+// 3 - Loop over the blocks to be indexed
+// 4 - Save status files after each block
+// 5 - Once done, enter on standby and check every 10 seconds to find if new blocks have been added
+// 6 - Repeat from (3)
 
 
-// 1 - Retrieving the last consensus block
-sia.connect('localhost:9980').then((siad) => { siad.call('/consensus').then((consensus) =>  {
-    var consensusBlock = consensus.height
-    consensusBlock = parseFloat(consensusBlock)
+initialMaintenance()
 
-    console.log("Last block in the blockchain: " + consensusBlock)
+async function initialMaintenance() {
+    // Initial delay of 2 seconds to allow the database connection to be stablished
+    await Commons.Delay(2000);
 
-    // 2 - Retrieving the blocks available in the database
-    var sqlQuery = "SELECT DISTINCT Height FROM BlockInfo"
-    var dbConn = new sql.ConnectionPool(sqlLogin);
-    dbConn.connect().then(function () {
-        var request = new sql.Request(dbConn);
-        request.query(sqlQuery).then(function (recordSet) {
-            dbConn.close();
+    // Initializing the REST API server
+    Restserver.Restserver(params)
 
-            // Saving blocks in an array
-            var blocksInDb = []
-            for (var n = 0; n < recordSet.recordset.length; n++) {
-                blocksInDb.push(parseInt(recordSet.recordset[n].Height))
-            }
-            blocksInDb.sort( function(a, b) {return a-b} )
-            console.log("Blocks available on the SQL database: " + blocksInDb.length)
+    // Check if the database tables exist, and if not create new tables
+    await SqlAsync.CheckNavigatorTables(params)
 
-            // 2b - Deleting the last 4 blocks of the database. This avoids issues of blockchain rearrangements
-            if (blocksInDb.length > 5) { // Only if there is something to delete...
-                var blocksToDelete = [blocksInDb[blocksInDb.length-1], blocksInDb[blocksInDb.length-2], blocksInDb[blocksInDb.length-3], blocksInDb[blocksInDb.length-4]]
-                SqlFunctions.deleteBlocks(blocksToDelete)
-            }
-
-            saveStatusFile(consensusBlock, blocksInDb[blocksInDb.length - 5])
-
-            setTimeout(function() { // Delay of 20 seconds to allow it to delete blocks and avoid race conditions
-                
-                // 3 - Building the array of blocks to index (includes the start of the main loop)
-                blockArrayBuild(blocksInDb, consensusBlock, blocksToDelete) 
-
-            }, 20000);
-
-            
-        }).catch(function (err) {
-            console.log(err);
-            dbConn.close();
-        });
-    }).catch(function (err) {
-        console.log(err);
-    });
-    
-})}).catch((err) => {console.error(err)}) // Errors of Sia Consensus call
-
-
-function blockArrayBuild(blocksInDb, consensusBlock, blocksToDelete)  {
-    // Constructs the array of blocks to index
-    var blocks = []
-    if (blocksInDb.length > 0) {
-        blocksInDb.sort( function(a, b) {return a-b} )
-        // A - checking gaps in database 
-        if (blocksInDb.length > 1) {
-            for (var m = 1; m < blocksInDb.length; m++) { // Check all the blocks already indexed
-                var gap = parseInt(blocksInDb[m]) - parseInt(blocksInDb[m-1]) - 1
-                for (var o = 0; o < gap; o++) {
-                    // Adding blocks per each gap lenght
-                    var missingBlock = parseInt(blocksInDb[m-1]) + o + 1
-                    blocks.push(missingBlock)
-                }
-            }
-        }
-        //console.log("Gap blocks: " + blocks)
-
-        // B - Filling up the DB until we reach consensus block
-        for (var n = (blocksInDb[blocksInDb.length-1] + 1); n <= consensusBlock; n++) {
-            blocks.push(n)
-        }
-
-    } else { // If the database is empty, first indexing
-        for (var n = 0; n <= consensusBlock; n++) {
-            blocks.push(parseFloat(n))
-        }
+    // Checking the existence of an exchanges rate database. Create one otherwise.
+    // The initial indexing is done asynchronosuly, as it might conflict in SQL Server with the blockchain indexing
+    if (params.useCoinGeckoPrices == true) {
+        await SqlAsync.CheckExchangesDatabase(params)
     }
 
-    // C - Removing blacklisted blocks
-    for (var q = 0; q < blocksToSkip.length; q++) {
-        for (var r = 0; r < blocks.length; r++) {
-            if (blocks[r] == blocksToSkip[q]) {
-                blocks.splice(r, 1)
-                r = blocks.length
-            }
-        }
+    // Injecting variables into the website files
+    if (params.injectWebsiteOnStartup == true) {
+        WebInjector.Injector(params)
     }
 
-    blocks = blocks.concat(blocksToDelete) // Adding the blocks that we are deleting
-    blocks.sort( function(a, b) {return a-b} )
-    console.log("Blocks to index: " + blocks.length)
-    
-    // Loading poolsDb, database with the known addresses of mining pools
-    var data1 = '';
-    var chunk1;
-    var stream1 = fs.createReadStream("../poolAddresses.json")
-    stream1.on('readable', function() { //Function just to read the whole file before proceeding
-        while ((chunk1=stream1.read()) != null) {
-            data1 += chunk1;}
-    });
-    stream1.on('end', function() {
-        if (data1 != "") {
-            var poolsDb = JSON.parse(data1)
+    // Checking if the user ordered a repair of blocks, and create a repair file if he did
+    var repairFromBlock = parseInt(process.argv[2])
+    if (repairFromBlock > 0) {
+        var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "Height", "Height", 1)
+        var sql = await SqlAsync.Sql(params, sqlQuery)
+        try {
+            var blockEnd = sql[0].Height
+        } catch (e) {
+            var blockEnd = 0
+        }
+        
+        if (blockEnd <= repairFromBlock) {
+            console.log("*** Wrong repair argument. It needs to be a block height smaller than the current highest block indexed")
         } else {
-            var poolsDb = [] // Empty array
+            var repair = {
+                blockStart: repairFromBlock,
+                blockEnd: blockEnd
+            }
+            console.log("*** Database repair ordered from block " + repairFromBlock + " to " + blockEnd + ". Repair of blocks will take "
+                + "place only while the blockchain indexer is iddle \n*** Repair will continue even after restarts \n*** To cancel it, "
+                + "delete the file repair.json")
+            
+            // Saving the repair order as a JSON object
+            fs.writeFileSync("repair.json", JSON.stringify(repair))
+        }
+        
+    }
+
+    // Initializing the Watchdog
+    Watchdog.Watchdog(params, currentdate.getMinutes())
+
+    // Next: Determine the blocks to index initially
+    getBlocksToIndex(params.purgeBlocksOnStartup)
+}
+
+async function getBlocksToIndex(blocksToPurgeNum) {
+    // Gets the blocks actually indexes, find gaps and creates an array of blocks to be indexed
+    
+    // A - Get current consensus height. Start with router number 0
+    var api = await Commons.MegaRouter(params, 0, '/consensus')
+    var currentHeight = parseInt(api.height)
+    console.log("Current blockchain height: " + currentHeight)
+
+    // B - Get the blocks already in the database
+    var sqlQuery = "SELECT Height FROM BlockInfo ORDER BY Height DESC"
+    var sqlBlocks = await SqlAsync.Sql(params, sqlQuery)
+    try {
+        console.log("Blocks in SQL database: " + sqlBlocks.length)
+        
+        // C - Purge the last purgeBlocksOnStartup (3 blocks by default). This is a security measure in case of blockchain reorgs or
+        // a corrupted database due to incomplete indexing on a crash
+        var blocksToPurge = []
+        for (var i = 0; i < blocksToPurgeNum; i++) {
+            blocksToPurge.push(parseInt(sqlBlocks[i].Height))
+        }
+        for (var i = 0; i < blocksToPurge.length; i++) {
+            await Indexer.BlockDeleter(params, blocksToPurge[i])
         }
 
-        // Main loop
-        blockRequest(blocks, poolsDb)
-    })
+        // D - Find gaps in the sequence, and determine the blocks that remain to be indexed (including the purged blocks)
+        var blocksToIndex = []
+        var blockHeights = []
+        for (var i = 0; i < sqlBlocks.length; i++) { // Getting only the block heights
+            blockHeights.push(parseInt(sqlBlocks[i].Height))
+        }
+        blockHeights.sort(Commons.SortNumber) // Sort numerically the heights
+        for (var i = 1; i < blockHeights.length; i++) { // Detecting gaps
+            if (blockHeights[i] != (blockHeights[i-1] + 1)) { // Gap detected
+                for (var j = (blockHeights[i-1] + 1); j < blockHeights[i]; j++) {
+                    blocksToIndex.push(j)
+                    console.log("Gap detected at height: " + j + " It will be repaired")
+                }
+            }
+        }
+        // Adding purged blocks
+        blocksToPurge.sort(Commons.SortNumber) // Ordering blocks we purged
+        blocksToIndex = blocksToIndex.concat(blocksToPurge)
+        // Rest of the blocks up to the current height
+        for (var i = (blocksToIndex[blocksToIndex.length-1] + 1); i <= currentHeight; i++) {
+            blocksToIndex.push(i)
+        }
+        console.log("Intitial indexing of " + blocksToIndex.length + " blocks started:")
+
+        // E - Initial status file update
+        await statusFileFullUpdate(currentHeight, sqlBlocks[blocksToPurgeNum].Height)
+
+    } catch (e) {
+        // If no block on the database: Genesis indexing
+        console.log("No blocks on the database. Indexing from Genesis")
+        blocksToIndex = []
+        for (var i = 0; i < currentHeight; i++) {
+            blocksToIndex.push(i)
+        }
+        prevBlockMetadata = {}
+        await statusFileFullUpdate(currentHeight, 0)
+    }
+
+    var startTimestamp = Math.floor(Date.now() / 1000)
+    blockRequest(blocksToIndex, 0, startTimestamp) // Launches the indexer iterator
 }
 
 
+async function blockRequest(blocksToIndex, accumulatedQueries, tenBlocksTimestamp) {
+    // Iterates over the list of blocksToIndex
+    // A - Check if there are blocks remaining, and if the block is a Genesis block
+    // B - /consensus/blocks call to the megarouter
+    // C - Get the missing information about outputs and sending addresses, to make the info compatible with an explorer call
+    // D - Indexing of transactions and metadata 
+    // E - Resolved contracts
+    // F - Saving used addresses & new balance of each address
+    // G - Miner payout TX
+    // H - Block info SQL queries
+    // I - SQL insertion operations
+    // J - Slice the indexed block from blocksToIndex and iterate next block
 
-function blockRequest(remainingBlocks, poolsDb) {
-    // The block to index is the first in the the array of remaining blocks
-    var block = remainingBlocks[0]
-
-    sia.connect('localhost:9980')
-    .then((siad) => {
-        siad.call({ 
-            url: '/explorer/blocks/' + block,
-            method: 'GET'
-        })
-        .then((rawblock) =>  {
-            // Pre-processing the block (had some issues in the past parsing the result, so I rather remove characters from the string)
-            var stringraw = JSON.stringify(rawblock)
-            var a = stringraw.substr(0, stringraw.length-1) //This removes the last "}"
-            var b = a.slice(9, a.length) // Removes first characters
-            var apiblock = JSON.parse(b)
-            var height = parseFloat(apiblock.height)
-            var timestamp = parseFloat(apiblock.rawblock.timestamp)
-            
-            if (block =! apiblock.height && apiblock.height > 0) {
-                // This check reveals the EXPLORER module of Sia has returned an incorrect block. Usually, this is due to a corruption of
-                // its database
-                console.log("Incorrect block retreived. Explorer module might be corrupted. New request in 5 minutes")
-                setTimeout(function() { 
-                    blockRequest(remainingBlocks, poolsDb) 
-                }, 30000);
-            } else {
-                // Check all the transactions in the block
-                var minerPayoutTxId = ""
-                var minerArbitraryData = ""
-                var bucketMinerFees = 0
-                var totalAddresses = [] // Saves all the addresses used in the block, for posterior processing
-                var sqlBatch = [] // Saves all the sql insert requests, to later add them in a single connection, or administer it as a queue
-                var txsIndexed = [] // Collects all the TXs number already indexed
-                var newTransactions = apiblock.transactions.length
-                var newContracts = 0
-                var minerPayoutTxId = ""
-                var minerArbitraryData = ""
-
-                if (apiblock.height == 0) {
-                    var n = 0 // Genesis has only 1 transaction
-                    // SFs in the Genesis Block (#0) are a special case
-                    var addSql = Siafunds.genesisBlockProcess(apiblock, n, height, timestamp)
-                    sqlBatch = sqlBatch.concat(addSql)
-                } else {
-                    for (var n = 0; n < apiblock.transactions.length; n++) {
-                        
-                        // SF TRANSACTIONS: First condition detects that the TX is SF involved. Second condition the receiver
-                        if (apiblock.transactions[n].rawtransaction.siafundinputs.length != 0 && apiblock.transactions[n].rawtransaction.siacoininputs.length != 0) {
-                            var returnArray = Siafunds.sfTransactionProcess(apiblock, n, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            txsIndexed = txsIndexed.concat(returnArray[1])
-                        }
-
-                        // SC TRANSACTIONS (pure transactions, unrelated to file contract activity)
-                        // They get identified as containing siacoininputs, paying miner fees, and negative for siafunds, contracts, revissions and proofs
-                        if (apiblock.transactions[n].rawtransaction.siacoininputs.length != 0
-                            && apiblock.transactions[n].rawtransaction.minerfees.length != 0
-                            && apiblock.transactions[n].rawtransaction.filecontracts.length == 0
-                            && apiblock.transactions[n].rawtransaction.filecontractrevisions.length == 0
-                            && apiblock.transactions[n].rawtransaction.storageproofs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siafundinputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siafundoutputs.length == 0
-                        ) {
-                            var returnArray = Siacoins.scTransactionProcess(apiblock, n, height, timestamp)
-                            // returnArray returns the 0- SQL sentences 1- addreses used in a TX, 2- TXs marked as indexed. As they repeat inside a block, this is problematic for SQL, so I collect them and
-                            // afterwards I sort them and de-duplicate them before saving them
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                            txsIndexed = txsIndexed.concat(returnArray[2])
-                        }
-                        
-                        // FILE CONTRACTS
-                        if (apiblock.transactions[n].rawtransaction.filecontracts != "") {
-                            var returnArray = FileContracts.fileContractsProcess(apiblock, n, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                            newContracts++
-                            txsIndexed = txsIndexed.concat(returnArray[2])
-                        }
-
-                        // CONTRACT REVISIONS
-                        if (apiblock.transactions[n].rawtransaction.filecontractrevisions != "") {
-                            var returnArray = FileContracts.revisionProcess(apiblock, n, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                            txsIndexed = txsIndexed.concat(returnArray[2])
-                        }
-
-                        // PROOFS OF STORAGE
-                        if (apiblock.transactions[n].rawtransaction.storageproofs != "") {
-                            var returnArray = FileContracts.proofProcess(apiblock, n, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                            txsIndexed = txsIndexed.concat(returnArray[2])
-                        }
-
-                        // DETECTING THE MINER PAYOUT TX
-                        // Some pools add this TX as the first in the block, some others, as the last. In both cases, it is an empty TX
-                        if (apiblock.transactions[n].rawtransaction.siacoininputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siacoinoutputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.minerfees.length == 0
-                            && apiblock.transactions[n].rawtransaction.filecontracts.length == 0
-                            && apiblock.transactions[n].rawtransaction.filecontractrevisions.length == 0
-                            && apiblock.transactions[n].rawtransaction.storageproofs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siafundinputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siafundoutputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.arbitrarydata.length > 0
-                        ) {
-                            var arbitraryData = apiblock.transactions[n].rawtransaction.arbitrarydata
-                            slice = arbitraryData[0].slice(0,14)
-                            if (slice != "SG9zdEFubm91bm") { // Otherwise, it would just be a legacy host announcement
-                                minerPayoutTxId = apiblock.transactions[n].id
-                                minerArbitraryData = apiblock.transactions[n].rawtransaction.arbitrarydata[0]
-                                txsIndexed.push(n) // Marking this TX as indexed
-                            }
-                        }
-
-                        // EXCEPTION: Legacy Host announcements
-                        // Some very old transactions anounce a host without paying miner fees or transacting a single siacoin
-                        // NOTE: strikingly, the same Tx Hash announcing the same host (legacy) can appear in multiple blocks. For consistency, and due to the small
-                        // value it has showing these multiple transactions, I am not making an exception that allows duplicated hashes in my database
-                        if (apiblock.transactions[n].rawtransaction.siacoininputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.siacoinoutputs.length == 0
-                            && apiblock.transactions[n].rawtransaction.arbitrarydata.length > 0) {
-                                
-                                var arbitraryData = apiblock.transactions[n].rawtransaction.arbitrarydata
-                                slice = arbitraryData[0].slice(0,14)
-                                if (slice == "SG9zdEFubm91bm") {
-                                    
-                                    var masterHash = apiblock.transactions[n].id
-                                    var hostIp = arbitraryData[0]
-                                    var s = hostIp.search("AAAAAAAAA")
-                                    hostIp = hostIp.slice(s+9)
-                                    var decodedIp = Buffer.from(hostIp, 'base64').toString('ascii')
-                                    
-                                    // Tx as a hash type
-                                    var toAddHashTypes = "('" + masterHash + "','host ann','" + masterHash + "')"
-                                    sqlBatch.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, masterHash))
-                                    // Host announcement info Info
-                                    var toAddHostAnnInfo = "('" + masterHash + "',''," + height + "," + timestamp + ",0,'" + decodedIp + "')"
-                                    sqlBatch.push(SqlFunctions.insertSql("HostAnnInfo", toAddHostAnnInfo, masterHash))
-                                    // TX as a component of a block
-                                    var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','host ann',0,0)"
-                                    sqlBatch.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
-
-                                    txsIndexed.push(n) // Marking this TX as indexed
-                                }
-                            }
-
-                        
-                        // Adding the miner fees to the "bucket" for the block reward
-                        if (apiblock.transactions[n].rawtransaction.minerfees != "") {
-                            bucketMinerFees = bucketMinerFees + parseInt(apiblock.transactions[n].rawtransaction.minerfees)
-                        }
-
-                    }
-
-                    // SPECIAL CASE: SC TXs NOT PAYING MINER FEES
-                    // Certain mining pools, like F2pool and some others unknown pools are including their pool payouts as transactions that do not pay miner fees
-                    // Actually, certain blocks are exclusively formed by these transactions. I am indexing them as "single" transactions (not the "duets" of senderTX-receiverTX),
-                    // not checking if they are chained between them, as this structure could be very complex and hard to follow. 
-                    // I honestly don't know what these pools are doing in these transactions...
-                    // For these cases, I check those Txs not yet indexed
-                    for (var i = 0; i < apiblock.transactions.length; i++) { // For each transaction in block
-                        var thisTxAlreadyIndexed = false // Checking boolean
-                        for (var j = 0; j < txsIndexed.length; j++) { // Check every tx already indexed
-                            if (i == txsIndexed[j]) { // A match
-                                thisTxAlreadyIndexed = true
-                            }
-                        }
-                        // Now, if this transaction[i] was not indexed, and it is actually a ScTx, proceed to index
-                        if (thisTxAlreadyIndexed == false && apiblock.transactions[i].rawtransaction.siacoinoutputs.length != 0) {
-                            var returnArray = Siacoins.scSingleTransaction(apiblock, i, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                        }
-                        // ANOTHER EXCEPTIONAL CASE: SF TX "ORPHANED" (a singlet TX not paying fees, again due to F2pool)
-                        if (thisTxAlreadyIndexed == false && apiblock.transactions[i].rawtransaction.siafundoutputs.length != 0) {
-                            var returnArray = Siafunds.sfSingleTransaction(apiblock, i, height, timestamp)
-                            sqlBatch = sqlBatch.concat(returnArray[0])
-                            var addresses = returnArray[1]
-                            for (var m = 0; m < addresses.length; m++) {
-                                totalAddresses.push(addresses[m])
-                            }
-                        }
-                    }
-
-                    // Saving all the addresses used in this block
-                    var addSql = Siacoins.addressesSave(totalAddresses)
-                    sqlBatch = sqlBatch.concat(addSql)
-
-                }
-                
-                // MINER PAYOUT TX: Instead of processing the first and/or last transaction (some pools include info on both), I calculate the reward
-                if (apiblock.height > 0) { // Genesis block was not mined
-
-                    var blockReward = 300000 - height
-                    if (blockReward < 30000) {blockReward = 30000} // Minimal block reward will always be 30000
-                    var totalBlockReward = (blockReward * 1000000000000000000000000) + bucketMinerFees // Miner receives the block reward + collected fees, in Hastings
-                    
-                    // SAVING THE DATA
-                    // Address change
-                    var payoutAddress = apiblock.rawblock.minerpayouts[0].unlockhash
-                    var payoutHash = minerPayoutTxId
-                    var toAddAddressChanges = "('" + payoutAddress + "','" + payoutHash + "'," + totalBlockReward + "," + 0 + "," + height + "," + timestamp + ",'blockreward')"
-                    var checkString = payoutAddress + "' and MasterHash='" + payoutHash 
-                    sqlBatch.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-                    
-                    // Address as hash type
-                    var toAddHashTypes = "('" + payoutAddress + "','address','')"
-                    sqlBatch.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, payoutAddress))
-                    
-                    // Miner payout as hash type
-                    var toAddHashTypes = "('" + payoutHash + "','blockreward','')"
-                    sqlBatch.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, payoutHash))
-                
-                    // Tx info
-                    var toAddTxInfo = "('" + payoutHash + "',''," + height + "," + timestamp + ",null)"
-                    sqlBatch.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, payoutHash))
-
-                    // Saving TX as a component of a block
-                    var toAddBlockTransactions = "(" + height + ",'" + payoutHash + "','blockreward'," + totalBlockReward + ",0)"
-                    sqlBatch.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, payoutAddress))
-                }
-
-                // Block metadata processing
-                var height = parseFloat(apiblock.height)
-                var timestamp = parseFloat(apiblock.rawblock.timestamp)
-                var transactionCount = parseFloat(apiblock.transactioncount)
-                var blockHash = apiblock.blockid
-                if (height > 0) {
-                    var minerAddress = apiblock.rawblock.minerpayouts[0].unlockhash
-                } else { // The genesis block was not mined
-                    minerAddress = "Genesis block"
-                }
-                
-                // Mining pool
-                var miningPool = "Unknown" // By default
-                for (var a = 0; a < poolsDb.length; a++) { // For each pool
-                    for (var b = 0; b < poolsDb[a].addresses.length; b++) { // For each address
-                        if (minerAddress == poolsDb[a].addresses[b]) {
-                            miningPool = poolsDb[a].name
-                            b = poolsDb[a].addresses.length // Finishes the loop
-                        }
-                    }
-                    if (miningPool != "Unknown") {
-                        a = poolsDb.length // Finishes the loop
-                    }
-                }
-                
-                var toAddBlockInfo = "(" + height + "," + timestamp + "," + transactionCount + ",'" + blockHash + "','" + minerAddress + "','"
-                    + minerArbitraryData + "'," + parseInt(apiblock.difficulty) + "," + parseInt(apiblock.estimatedhashrate) + "," + parseInt(apiblock.totalcoins) + ","
-                    + parseInt(apiblock.siacoininputcount) + "," + parseInt(apiblock.siacoinoutputcount) + "," + parseInt(apiblock.filecontractrevisioncount) + "," + parseInt(apiblock.storageproofcount) + "," 
-                    + parseInt(apiblock.siafundinputcount) + "," + parseInt(apiblock.siafundoutputcount) + "," + parseInt(apiblock.activecontractcost) + ","
-                    + parseInt(apiblock.activecontractcount) + "," + parseInt(apiblock.activecontractsize) + "," + parseInt(apiblock.totalcontractcost) + ","
-                    + parseInt(apiblock.filecontractcount) + "," + parseInt(apiblock.totalcontractsize) + "," + newContracts + "," + newTransactions
-                    + ",'" + miningPool + "'," + parseInt(apiblock.minerfeecount) + ")"
-                sqlBatch.push(SqlFunctions.insertSql("BlockInfo", toAddBlockInfo, height));
-
-                // Block as a hash type
-                var toAddHashTypes = "('" + blockHash + "','block'," + height + ")"
-                sqlBatch.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, blockHash))
-                var toAddHashTypes2 = "('" + height + "','block'," + height + ")"
-                sqlBatch.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes2, height))
-
-                // Resolving contracts where no proof of storage was provided: contract is marked as failed, outputs are resolved
-                SqlFunctions.resolveFailedContracts(height, timestamp)
-
-                // Creating the merged SQL operation and sending it to SQL
-                var sqlQuery = ""
-                for (var i = 0; i < sqlBatch.length; i++) {
-                    var sqlQuery = sqlQuery + sqlBatch[i] + " "
-                }
-                SqlFunctions.insertFinalSql(sqlQuery, sqlBatch)
-
-                // Report
-                console.log("Block added: " + height + " - Txs: " + apiblock.transactions.length + " - SQL queries: " + sqlBatch.length)
-
-                // Removing the block we just indexed from the array of pending blocks
-                remainingBlocks.splice(0, 1)
-
-                // Requesting the next block. I use a dyamic delay depending on the size of the batch of SQL queries, to avoid the program to choke
-                // Default: 1 second for each 500 queries
-                var delaySeconds = Math.ceil(sqlBatch.length / queriesPerSecond)
-                var delay = delaySeconds * 1000
-                if (remainingBlocks.length > 0) { // If more blocks remaining, next request after the delay
-                    setTimeout(function() { 
-                        blockRequest(remainingBlocks, poolsDb) 
-                    }, delay);
-                } else {
-                    setTimeout(function() { // 5 seconds delay for safety, to avoid possible race conditions
-
-                        // Creating the tables and chart for the main page about last operations
-                        setTimeout(function() { // Additional timeout
-                            SqlFunctions.lastTxsStats()
-                        }, 20000);
-
-                        // Exiting this loop and going to consensusCheck. Takes the current height to there
-                        console.log("Indexing done, awaiting Consensus for new blocks")
-                        consensusCheck(height)
-
-                    }, 5000);
-                }
-            }
-        })
-        .catch((err) => {
-            console.log("// Error retreiving block: " + block)
-            blockRequest(remainingBlocks, poolsDb) // Insist if an error
-        })
-    })
-    .catch((err) => {
-        console.error("// Error connecting to Sia. Block: " + block)
-        blockRequest(remainingBlocks, poolsDb) // Insist if an error
-    })
-}
-
-
-function consensusCheck(dbHeight) {
-
-    // A - Consensus check: checks periodically the current height of the blockchain, by repeating itself after a delay
-    sia.connect('localhost:9980').then((siad) => { siad.call('/consensus').then((consensus) =>  {
-        var consensusBlock = consensus.height
-        consensusBlock = parseFloat(consensusBlock)
-
-        saveStatusFile(consensusBlock, dbHeight)
-
-        if (consensusBlock > dbHeight) {
-            //console.log("New highest block in the blockchain: " + consensusBlock)
-
-            // B - Create the array of new blocks
-            var blocksToIndex = []
-
-            // C - Adding the new blocks to index
-            for (var m = (dbHeight + 1); m <= consensusBlock; m++) {
-                blocksToIndex.push(m)
-            }
-
-            // D - Reload the pools' database 
-            var data1 = '';
-            var chunk1;
-            var stream1 = fs.createReadStream("poolAddresses.json")
-            stream1.on('readable', function() { //Function just to read the whole file before proceeding
-                while ((chunk1=stream1.read()) != null) {
-                    data1 += chunk1;}
-            });
-            stream1.on('end', function() {
-                if (data1 != "") {
-                    var poolsDb = JSON.parse(data1)
-                } else {
-                    var poolsDb = [] // Empty array
-                }
-                
-                // E - Checking block rearrangements, starting with the dbHeight block and going back as many blocks as there was a change
-                var blockToReview = dbHeight
-                var extraBlocks = []
-                blockReview(blocksToIndex, poolsDb, blockToReview, extraBlocks)
-            })
+    try {
+        // A - Check if there are blocks remaining
+        if (blocksToIndex.length == 0) {
+            preStandByForBlocks()
         
         } else {
-            // Repeat after a delay
-            setTimeout(function() {
-                consensusCheck(dbHeight) 
-            }, consensusCheckTime);
+            var blockStartTime = Math.floor(Date.now() / 1000)
+            var block = blocksToIndex[0]
+
+            // The main indexing operation is in this async function
+            var sqlBatchLength = await Indexer.BlockIndexer(params, block)
+
+            // J - Update heartbeat. As this is initial syncing, only every 10 blocks, to avoid too many unnecessary file opeprations
+            if (block % 10 == 0) {
+                // Check the consensus height
+                var api = await Commons.MegaRouter(params, 0, '/consensus')
+                var currentHeight = parseInt(api.height)
+                
+                // Update file
+                await statusFileFullUpdate(currentHeight, block)
+
+                // Check if we need to update the coin prices
+                if (params.useCoinGeckoPrices == true) {
+                    var date = new Date()
+                    var hh = date.getHours()
+                    var mm = date.getMinutes()
+                    
+                    if (hh == 0 && mm < 15) {
+                        // Checking if it is already inserted on the database or not
+                        var dayBegin = await ExchangeRates.DayBeginTime(date.getTime())
+                        var sqlQuery = "SELECT Timestamp FROM ExchangeRates WHERE Timestamp=" + dayBegin
+                        var sql = await SqlAsync.Sql(params, sqlQuery)
+                        if (sql.length == 0 || sql == false) {
+                            await ExchangeRates.DailyExchangeData(params)
+                        } 
+                    }
+                }
+            }
+
+            // K - Indexing time, for logs
+            var blockEndTime = Math.floor(Date.now() / 1000)
+            if (blocksToIndex.length < 200) {
+                // We are approaxing the current height, or this is regular stand-by indexing: show full stats
+                var indexingTime = blockEndTime - blockStartTime
+                if (indexingTime == 0) {indexingTime="<1"}
+                accumulatedQueries = 0
+                tenBlocksTimestamp = 0
+                console.log("Block " + block + " indexed - " + sqlBatchLength + " queries in " + indexingTime + " sec")
+            } else {
+                // Initial indexing, just show progress every 10 blocks
+                if (block % 10 == 0) {
+                    var minusNineBlocks = block - 9
+                    if (minusNineBlocks < 0) {minusNineBlocks = 0}
+                    console.log("Blocks " + minusNineBlocks + " to " + block + " indexed - " + accumulatedQueries + " queries in " + (blockEndTime - tenBlocksTimestamp) + " sec")
+                    accumulatedQueries = 0
+                    tenBlocksTimestamp = blockEndTime // We reset the counter to the timestamp of this block
+                } else {
+                    accumulatedQueries = accumulatedQueries + sqlBatchLength
+
+                    // To avoid the Watchdog to panic if this segment of 10 blocks is taking too long, if this block took more than 3 minutes (180 seconds),
+                    // we update the heartbeat in the status file
+                    if ((blockEndTime - blockStartTime) > 180) {
+                        try {
+                            var rawFile = fs.readFileSync("status.json")
+                            var statusArray = JSON.parse(rawFile)
+                            statusArray[0].heartbeat = new Date().valueOf()
+                            fs.writeFileSync("status.json", JSON.stringify(statusArray))
+                        } catch (e) {
+                            // Error, we create a new file from scratch (takes a bit longer)
+                            console.log("// Status file not found or corrupted. Creating a new one")
+                            await statusFileFullUpdate(consensusHeight, sqlHeight)
+                        }
+                    }
+                }
+            }
+            
+            // L - Next block. We remove the first element of the array
+            blocksToIndex.shift()
+            blockRequest(blocksToIndex, accumulatedQueries, tenBlocksTimestamp)
+        }
+    } catch (e) {
+        // Stops the script to allow a graceful restart by Forever/PM2 if something unexpected stopped the indexer. As the script runs also the API server and the
+        // database connector, otherwise the script would keep running
+        console.log(e)
+        console.log("*** Forcing the stop of the script in 5 minutes")
+        await Commons.Delay(300000); // Async timeout
+        process.exit()
+    }
+}
+
+async function preStandByForBlocks() {
+    // Makes a full status file update after finishing the list of indexing blocks
+    // It is the previous state to the stand-by mode
+    var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "Height", "Height", 1)
+    var sql = await SqlAsync.Sql(params, sqlQuery)
+    var sqlHeight = sql[0].Height
+    var api = await Commons.MegaRouter(params, 0, '/consensus')
+    var consensusHeight = parseInt(api.height)
+    await statusFileFullUpdate(consensusHeight, sqlHeight)
+    standByForBlocks(sqlHeight)
+}
+
+async function standByForBlocks(sqlHeight) {
+    // Awaits for new blocks being added to the blockchain, checking every `params.consensusCheckTime` seconds. In the meantime, it can do some
+    // maintenance tasks. It is a recursive function
+
+    // A - Priority 1: Check if we are at the beginning of the day, and we need to index the coin prices
+    // Checking the time of the day. We only assess the need of updating if it is 00:00 - 00:15
+    if (params.useCoinGeckoPrices == true) {
+        var date = new Date()
+        var hh = date.getHours()
+        var mm = date.getMinutes()
+        
+        if (hh == 0 && mm < 15) {
+            // Checking if it is already inserted on the database or not
+            var dayBegin = await ExchangeRates.DayBeginTime(date.getTime())
+            var sqlQuery = "SELECT Timestamp FROM ExchangeRates WHERE Timestamp=" + dayBegin
+            var sql = await SqlAsync.Sql(params, sqlQuery)
+            if (sql.length == 0 || sql == false) {
+                await ExchangeRates.DailyExchangeData(params)
+            } 
+        }
+    }
+    
+
+    // B - Priority 2: Check for newly indexed blocks
+    var api = await Commons.MegaRouter(params, 0, '/consensus')
+    var consensusHeight = parseInt(api.height)
+    if (consensusHeight > sqlHeight) {
+        
+        // Create the new bacth of blocks
+        var blocksToIndex = []
+        for (var i = (sqlHeight+1); i <= consensusHeight; i++) {
+            blocksToIndex.push(i)
         }
 
-    })}).catch((err) => {console.error(err); console.log("//// Error on consensus call")}) // Errors of Sia Consensus call
-}
-
-
-function blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks) {
-    // This SQL returns the miner poayout address and hash, to later confirm if rearrangements took place
-    var sqlQuery = "SELECT Hash, MinerPayoutAddress FROM BlockInfo WHERE Height = " + blockToReview
-    var dbConn = new sql.ConnectionPool(sqlLogin);
-    dbConn.connect().then(function () {
-        var request = new sql.Request(dbConn);
-        request.query(sqlQuery).then(function (recordSet) {
-            dbConn.close();
-            var dbBlock = recordSet.recordset[0]
-
-            // Checking with Sia the data of the block:
-            sia.connect('localhost:9980')
-            .then((siad) => {
-                siad.call({ 
-                    url: '/explorer/blocks/' + blockToReview,
-                    method: 'GET'
-                })
-                .then((rawblock) =>  {
-                    // Pre-processing the block (had some issues in the past parsing the result, so I rather remove characters from the string)
-                    var stringraw = JSON.stringify(rawblock)
-                    var a = stringraw.substr(0, stringraw.length-1) //This removes the last "}"
-                    var b = a.slice(9, a.length) // Removes first characters
-                    var apiblock = JSON.parse(b)
-
-                    // Checking if the info of the block in the database and the info currently in consensus match
-                    if (dbBlock.Hash == apiblock.blockid && dbBlock.MinerPayoutAddress == apiblock.rawblock.minerpayouts[0].unlockhash) {
-                        // We are done: we will delete the extra blocks, concatenate extra blocks to blocks to index and index all
-                        preIndexing(blocksToIndex, poolsDb, extraBlocks)
-                    } else {
-                        // This block was rearranged: add it to extra blocks and review the previous one
-                        console.log("Block rearrangement detected: " + blockToReview)
-                        extraBlocks.push(blockToReview)
-                        blockToReview--
-                        blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks)
-                    }
-                })
-            }).catch((err) => { // Error fetching the block
-                console.error(err)
-                blockReview (blocksToIndex, poolsDb, blockToReview, extraBlocks) // Insist if an error
-            })
-
-        }).catch(function (err) {
-            dbConn.close();
-        });
-    }).catch(function (err) {
-        //console.log(err);
-    });
-}
-
-
-function preIndexing(blocksToIndex, poolsDb, extraBlocks) {
-    // This function orders deleting rearranged blocks and ignites the indexing of the new blocks
-
-    if (extraBlocks.length == 0) {
-        // Nothing to delete, we just reindex!
-        blockRequest(blocksToIndex, poolsDb)
+        // Launch indexing. Previous to start indexing, we try to detect blockhain reorganizations, reindex changed 
+        // blocks and keep track of the reorg
+        checkReorgs(sqlHeight, blocksToIndex, [])
     
     } else {
-        // A - Deleting blocks
-        console.log("Deleting " + extraBlocks.length + " blocks")
-        SqlFunctions.deleteBlocks(extraBlocks)
-        var delay = extraBlocks.length * 15000
-        setTimeout(function() { // Delay of 15 seconds per block deleted, to avoid race conditions
+        // C - Priority 3: Index a batch of 10 blocks from the repair order, if it exists
+        var skipDelay = false
+        try {
+            var repairOrder = JSON.parse(fs.readFileSync("repair.json"))
+            blocksToRepair = []
+            for (var i = repairOrder.blockStart; (i < (repairOrder.blockStart+10) && i <= repairOrder.blockEnd); i++) {
+                blocksToRepair.push(i)
+            }
+            console.log("*** Repairing the blocks segment: " + blocksToRepair[0] + " - " + blocksToRepair[blocksToRepair.length-1])
+
+            // Updating the file, or deleting it if these were the last blocks
+            repairOrder.blockStart = repairOrder.blockStart + 10
+            if (repairOrder.blockStart <= repairOrder.blockEnd) {
+                // Update file
+                fs.writeFileSync("repair.json", JSON.stringify(repairOrder))
+            } else {
+                // Delete file
+                fs.unlinkSync("repair.json")
+                console.log("*** This is the last segment of the repair order!")
+            }
             
-            // B - Concatenating and sorting extra blocks
-            blocksToIndex = blocksToIndex.concat(extraBlocks)
-            blocksToIndex.sort(function(a, b){return a-b})
+            // Sequential deletion and re-indexing
+            for (var i = 0; i < blocksToRepair.length; i++) {
+                await Indexer.BlockDeleter(params, blocksToRepair[i])
+                var blockStartTime = Math.floor(Date.now() / 1000)
+                await Indexer.BlockIndexer(params, blocksToRepair[i])
+                var blockEndTime = Math.floor(Date.now() / 1000)
+                console.log("Block " + blocksToRepair[i] + " reindexed in " + (blockEndTime - blockStartTime) + " sec")
+            }
 
-            // C - Igniting indexing
-            blockRequest(blocksToIndex, poolsDb)
+            console.log() // Spacer
+            skipDelay = true // We have spent time already in this repair. Check if there are new blocks to index
+        } catch (e) {}
 
-        }, delay);
+
+        // D - Status update and recursing stand-by routine after a timeout (skip it if we repaired a segment of 10 blocks)
+        if (skipDelay == false) {
+            await Commons.Delay(params.consensusCheckTime)
+        }
+        statusFilePartialUpdate(consensusHeight, sqlHeight)
+        standByForBlocks(sqlHeight)
     }
 }
 
 
-function saveStatusFile(consensusBlock, lastBlockDb) {
-    var now = new Date().valueOf()
-    var statusArray = {
-        "consensusblock": consensusBlock,
-        "lastblock": lastBlockDb,
-        "time": now
+async function statusFileFullUpdate(consensusHeight, sqlHeight) {
+    // Fully updates all the fields of the status.json file. This API file informs about the health of Navigator
+    // Executed after each indexed block in stand-by mode, or each 10 blocks during initial indexing
+
+    // Peers number
+    var api = await Commons.MegaRouter(params, 0, '/gateway')
+    var peersNumber = 0
+    for (var i = 0; i < api.peers.length; i++) {
+        if (api.peers[i].inbound == false) {
+            peersNumber++
+        }
     }
 
-    var stream = fs.createWriteStream("status.json")
-    var string = JSON.stringify(statusArray)
-    stream.write(string)
+    // Sia daemon version
+    var api = await Commons.MegaRouter(params, 0, '/daemon/version')
+    var version = api.version
+
+    // Mempool (unconfirmed transactions)
+    var mempoolSize = await Mempool.Index(params)
+
+    // Total transactions indexed
+    var totalTxQuery = SqlComposer.SelectTop(params, "BlockInfo", "TransactionCount", "Height", 1)
+    var totalTx = await SqlAsync.Sql(params, totalTxQuery)
+    if (totalTx.length == 0) {
+        var transactionCount = 0
+    } else {
+        var transactionCount = totalTx[0].TransactionCount
+    }
+    
+    // Building and saving array
+    var statusArray = [{
+        "consensusblock": consensusHeight,
+        "lastblock": sqlHeight,
+        "mempool": mempoolSize,
+        "totalTx": transactionCount,
+        "heartbeat": new Date().valueOf(),
+        "peers": peersNumber,
+        "version": version
+    }]
+    fs.writeFileSync("status.json", JSON.stringify(statusArray))
+
+    // Update the landing page API. Can be done synchronously safely
+    landingApi(params)
+}
+
+
+async function statusFilePartialUpdate(consensusHeight, sqlHeight) {
+    // Updates only the block heights and heartbeat timestamp of the status.json file.
+    // This API file informs about the health of Navigator. Also the mempool size
+    try {
+        var rawFile = fs.readFileSync("status.json")
+        var statusArray = JSON.parse(rawFile)
+        statusArray[0].consensusblock = consensusHeight
+        statusArray[0].lastblock = sqlHeight
+        statusArray[0].heartbeat = new Date().valueOf()
+        statusArray[0].mempool = await Mempool.Index(params)
+        fs.writeFileSync("status.json", JSON.stringify(statusArray))
+        
+    } catch (e) {
+        // Error, we create a new file from scratch (takes a bit longer)
+        console.log("// Status file not found or corrupted. Creating a new one")
+        await statusFileFullUpdate(consensusHeight, sqlHeight)
+    }
+}
+
+
+async function landingApi(params) {
+    // Collects latest items indexed: ScTx, file contracts, others and blocks
+    var last10ScTx = SqlComposer.SelectTopWhere(params, "BlockTransactions", "Height,TxHash", "Height", 10,
+        "TxType='ScTx'")
+    var last10Contracts = SqlComposer.SelectTopWhere(params, "BlockTransactions", "Height,TxHash,TxType", "Height", 10,
+        "TxType='contract' OR TxType='revison' OR TxType='storageproof' OR TxType='contractresol'")
+    var last10Others = SqlComposer.SelectTopWhere(params, "BlockTransactions", "Height,TxHash,TxType", "Height", 10,
+        "TxType='SfTx' OR TxType='host ann' OR TxType='blockreward'")
+    var last10Blocks = SqlComposer.SelectTop(params, "BlockInfo", "Height,MiningPool,Timestamp", "Height", 10)
+
+    var api = {
+        last10ScTx: await SqlAsync.Sql(params, last10ScTx),
+        last10Contracts: await SqlAsync.Sql(params, last10Contracts),
+        last10Others: await SqlAsync.Sql(params, last10Others),
+        last10Blocks: await SqlAsync.Sql(params, last10Blocks)
+    }
+
+    // Saving API
+    fs.writeFileSync("landingpagedata.json", JSON.stringify(api))
+}
+
+
+async function checkReorgs(sqlHeight, blocksToIndex, blocksOrphaned) {
+    // Recursive function that checks sequentially blocks that have been reorganized and keeps track of the reorg
+    // We define that a block has been replaced if either a) the hash or b) the number of transactions do not match
+    var sqlQuery = "SELECT Height, Hash, MinerPayoutAddress, MiningPool, NewTx FROM BlockInfo WHERE Height=" + sqlHeight
+    var sql = await SqlAsync.Sql(params, sqlQuery)
+    var indexedBlock = sql[0]
+    var apiConsensus = await Commons.MegaRouter(params, 0, '/consensus/blocks?height=' + sqlHeight)
+
+    // Checking discrepancies
+    if (indexedBlock.NewTx =! apiConsensus.transactions.length || indexedBlock.Hash != apiConsensus.id) {
+        // The block was replaced, save the data on blocksOrphaned, go one block back, delete the block, add the block to the list
+        // to index and repeat this function
+
+        // Determining the new mining pool
+        // Mining pool name
+        var miningPool = "Unknown" // Default 
+        for (var a = 0; a < params.poolsDb.length; a++) { // For each pool
+            for (var b = 0; b < params.poolsDb[a].addresses.length; b++) { // For each address
+                if (apiConsensus.minerpayouts[0].unlockhash == params.poolsDb[a].addresses[b]) {
+                    miningPool = params.poolsDb[a].name
+                    b = params.poolsDb[a].addresses.length // Finishes the loop faster
+                }
+            }
+            if (miningPool != "Unknown") {
+                a = params.poolsDb.length // Finishes the loop faster
+            }
+        }
+
+        // Saving data on blocksOrphaned
+        blocksOrphaned.push({
+            height: sqlHeight,
+            hash: indexedBlock.Hash,
+            miningPool: indexedBlock.MiningPool,
+            miningAddress: indexedBlock.MinerPayoutAddress,
+            replacingHash: apiConsensus.id,
+            replacingPool: miningPool,
+            replacingMiningAddress: apiConsensus.minerpayouts[0].unlockhash
+        })
+
+        // Deleting block and adding it to the list to index
+        console.log("* Blockchain reorganization detected for block " + sqlHeight + ". Deleting...")
+        await Indexer.BlockDeleter(params, sqlHeight)
+        blocksToIndex.unshift(sqlHeight)
+
+        // Repeat on the previousu block until there is concordance between SQL and Sia
+        sqlHeight = sqlHeight - 1
+        checkReorgs(sqlHeight, blocksToIndex, blocksOrphaned)
+
+    } else {
+        // Finished. If blocksOrphaned > 0 save the event. Move to indexing
+        if (blocksOrphaned.length > 0) {
+            await saveOrphanedBlocks(blocksOrphaned)
+        }
+
+        var startTimestamp = Math.floor(Date.now() / 1000)
+        blockRequest(blocksToIndex, 0, startTimestamp)
+    }
+}
+
+async function saveOrphanedBlocks(blocksOrphaned) {
+    // Saves the events of the reorganization on the SQL database
+
+    // A - Detecting the last orphaning event, to assign a new number
+    var sqlQuery = SqlComposer.SelectTop(params, "Reorgs", "ReorgEventNum", "ReorgEventNum", 1)
+    var sql = await SqlAsync.Sql(params, sqlQuery)
+    if (sql.length == 0) {
+        var reorgEventNum = 1
+    } else {
+        var reorgEventNum = sql[0].ReorgEventNum + 1
+    }
+
+    console.log("*** Recording blockchain reorg #" + reorgEventNum + " affecting " + blocksOrphaned.length + " blocks")
+
+    for (var i = 0; i < blocksOrphaned.length; i++) {
+        var sqlInsertion = SqlComposer.InsertReorg(params, blocksOrphaned[i], reorgEventNum)
+        await SqlAsync.Sql(params, sqlInsertion)
+    }
 }
 

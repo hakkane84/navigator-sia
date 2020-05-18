@@ -1,62 +1,16 @@
-// ============================
-//      SIAFUND OPERATIONS
-// ============================
-
+// Indexes SiaFund operations
 var exports = module.exports={}
+var SqlAsync = require('./sql_async.js')
+var SqlComposer = require("./sql_composer.js")
+var Outputs = require("./outputs.js")
 
-// Load external modules
-var SqlFunctions = require('../modules/sqlfunctions.js')
-
-
-exports.genesisBlockProcess = function(apiblock, n, height, timestamp) {
-    var newSql = []
-    var totalSFtransacted = 0
-    var addressesImplicated = []
-    var synonymHahses = []
-    var masterHash = apiblock.transactions[0].id
-    var minerFees = 0
-    for (k = 0; k < apiblock.transactions[0].rawtransaction.siafundoutputs.length; k++) {
-        var receiverHash = apiblock.transactions[0].rawtransaction.siafundoutputs[k].unlockhash
-        var receiverAmount = apiblock.transactions[0].rawtransaction.siafundoutputs[k].value
-        addressesImplicated.push({"hash": receiverHash, "sc": 0, "sf": receiverAmount})
-        totalSFtransacted = totalSFtransacted + parseInt(receiverAmount)
-    } 
-    // Saving the data in SQL Insert queries
-    for (var m = 0; m < addressesImplicated.length; m++) {
-        var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-            "," + addressesImplicated[m].sf + "," + height + "," + timestamp + ",'SfTx')"
-        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
-        // This check will look rows with the fields Address and MasterHash to not include a duplicate
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        
-        // Addresses as hash types
-        var toAddHashTypes = "('" + addressesImplicated[m].hash + "','address','')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, addressesImplicated[m].hash))
-    }
-    // Tx info
-    var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
-    newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
-
-    // Saving TX as a component of a block
-    var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','SfTx',0," + totalSFtransacted + ")"
-    newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
-
-    // MasterHash as a hash type
-    var toAddHashTypes = "('" + masterHash + "','SfTx','" + masterHash + "')"
-    newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, masterHash))
-
-    // Returns an array with all the SQL sentences
-    return newSql
-
-}
-
-
-exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
+exports.sfTransactionProcess = async function(params, apiblock, n, height, timestamp, totalContractCost) {
     // SF TX are composed of 3 TX in sequence:
     // 1- A "sending tx" that pays the miner fees in SC. The rest of the output returns to the wallet of the sender, to another address
     // 2- A "sending tx" for the SFs
     // 3- The proper TX where the SFs are sent to the receiver, and the miner fees are paid
     // For SFs, first we find the TX of the receiver and from it we find the tx of the sender and the TX of Siacoins used to pay fees
+
     var totalSFtransacted = 0
     var totalSCtransacted = 0
     var minerFees = 0
@@ -65,12 +19,13 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     var newSql = []
     var txsIndexed = []
     txsIndexed.push(n)
+
     // Receivers info
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siafundoutputs.length; i++) { // in case of several receivers
         var receiverHash = apiblock.transactions[n].rawtransaction.siafundoutputs[i].unlockhash
-        var receiverAmount = apiblock.transactions[n].rawtransaction.siafundoutputs[i].value)
+        var receiverAmount = apiblock.transactions[n].rawtransaction.siafundoutputs[i].value
         totalSFtransacted = totalSFtransacted + parseInt(receiverAmount)
-        
+
         // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
         var receiverRepeatedBool = false
         for (k = 0; k < addressesImplicated.length; k++) {
@@ -105,17 +60,28 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
                     var senderAmount = (apiblock.transactions[i].siafundinputoutputs[j].value) * -1
                     
                     // SC dividend claim is calculated from the totalcontractcost minus the part indicated in claimstart
-                    var senderClaim = apiblock.transactions[i].siafundinputoutputs[j].claimstart
-                    senderClaim = ((apiblock.totalcontractcost * 0.039) - senderClaim) / 10000
-                    totalSCtransacted = totalSCtransacted + parseInt(senderClaim)
-                    senderClaimAddress = apiblock.transactions[i].rawtransaction.siafundinputs[j].claimunlockhash
-                    // Saving the claim independently, as it is a diffirent kind of SC address change ("SfClaim")
-                    var toAddAddressChanges = "('" + senderClaimAddress + "','" + masterHash + "'," + senderClaim + 
-                        ",0," + height + "," + timestamp + ",'SfClaim')"
-                    var checkString = senderClaimAddress + "' and MasterHash='" + masterHash 
-                    newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-                    var toAddHashTypes = "('" + senderClaimAddress + "','address','')"
-                    newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, senderClaimAddress))
+                    var senderClaimBlock = apiblock.transactions[i].siafundinputoutputs[j].claimblock // The block of the creation of the parent input
+
+                    // Finding the totalContractCost at that block
+                    var sqlQuery = "SELECT TotalContractCost FROM BlockInfo WHERE Height=" + senderClaimBlock
+                    var result = await SqlAsync.Sql(params, sqlQuery)
+                    try {
+                        var prevTotalContractCost = BigInt(result[0].TotalContractCost)
+                    } catch (e) {
+                        var prevTotalContractCost = BigInt(0)
+                    }
+
+                    // Calculating the claim
+                    senderClaim = Number(totalContractCost - prevTotalContractCost) * params.blockchain.siafundFees / params.blockchain.totalSiafunds
+                    senderClaim = senderClaim * apiblock.transactions[i].siafundinputoutputs[j].value // We multiply it by the number of SF transacted
+                    totalSCtransacted = totalSCtransacted + Math.floor(senderClaim)
+                    var senderClaimAddress = apiblock.transactions[i].rawtransaction.siafundinputs[j].claimunlockhash
+
+                    // Claim output creation
+                    newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[i].id, apiblock.height)
+
+                    // Adding the claim to addressesImplicated with a flag: It is indexed, but we need the info to update the balance of the address
+                    addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, "txType": "SfClaim"})
 
                     // In some consolidation operations, individual SF coming from the same address are possible, so if the senderHash is already 
                     // in addressesImplicated, then merge the amounts. Otherwise, the SQL controler will not admit duplicates
@@ -148,7 +114,7 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     }
     if (senderFound == false) { 
         // There is a very weird number of cases of SF transactions implicating only one TX. They are related to Nebulous Siafunds. Here, the sender info is in the receiver TX
-        console.log("Special SF transaction found and processed")
+        //console.log("** Special SF transaction found and processed")
         var masterHash = apiblock.transactions[n].id
         for (var j = 0; j < apiblock.transactions[n].siafundinputoutputs.length; j++) { // in case of several inputs
             // To avoid duplication in addresses, search if the address is already computed and update the balance
@@ -164,19 +130,31 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
                 var senderAmount = (apiblock.transactions[n].siafundinputoutputs[j].value) * -1
                 addressesImplicated.push({"hash": senderHash, "sc": 0, "sf": senderAmount})
             }
-            
+
+
             // SC dividend claim is calculated from the totalcontractcost minus the part indicated in claimstart
-            var senderClaim = apiblock.transactions[n].siafundinputoutputs[j].claimstart
-            senderClaim = ((apiblock.totalcontractcost * 0.039) - senderClaim) / 10000
-            totalSCtransacted = totalSCtransacted + parseInt(senderClaim)
-            senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
-            // Saving the claim independently, as it is a diffirent kind of SC address change ("SfClaim")
-            var toAddAddressChanges = "('" + senderClaimAddress + "','" + masterHash + "'," + senderClaim + 
-                ",0," + height + "," + timestamp + ",'SfClaim')"
-            var checkString = senderClaimAddress + "' and MasterHash='" + masterHash 
-            newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-            var toAddHashTypes = "('" + senderClaimAddress + "','address','')"
-            newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, senderClaimAddress))
+            var senderClaimBlock = apiblock.transactions[n].siafundinputoutputs[j].claimblock // The block of the creation of the parent input
+
+            // Finding the totalContractCost at that block
+            var sqlQuery = "SELECT TotalContractCost FROM BlockInfo WHERE Height=" + senderClaimBlock
+            var result = await SqlAsync.Sql(params, sqlQuery)
+            try {
+                var prevTotalContractCost = BigInt(result[0].TotalContractCost)
+            } catch (e) {
+                var prevTotalContractCost = BigInt(0)
+            }
+
+            // Calculating the claim
+            senderClaim = Number(totalContractCost - prevTotalContractCost) * params.blockchain.siafundFees / params.blockchain.totalSiafunds
+            senderClaim = senderClaim * apiblock.transactions[n].siafundinputoutputs[j].value // We multiply it by the number of SF transacted
+            totalSCtransacted = totalSCtransacted + Math.floor(senderClaim)
+            var senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+
+            // Claim output creation
+            newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
+
+            // Adding the claim to addressesImplicated with a flag: It is indexed, but we need the info to update the balance of the address
+            addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, txType: "SfClaim"})
         }
     }
 
@@ -192,7 +170,7 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
                     var senderHash = apiblock.transactions[i].siacoininputoutputs[j].unlockhash
                     var senderAmount = (apiblock.transactions[i].siacoininputoutputs[j].value) * -1
                     //totalSCtransacted = totalSCtransacted + apiblock.transactions[i].siacoininputoutputs[j].value
-                    addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0})
+                    addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0, txType: "SfTx"})
                 }
 
                 // Return address of the unused output
@@ -200,7 +178,7 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
                     // In most of the cases, part of the output returns to the address of the sender
                     var receiverHash = apiblock.transactions[i].rawtransaction.siacoinoutputs[1].unlockhash // [0] Goes to pay miner fees, it is just an intermediate address
                     var receiverAmount = apiblock.transactions[i].rawtransaction.siacoinoutputs[1].value
-                    addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount, "sf": 0})
+                    addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount, "sf": 0, txType: "SfTx"})
                     totalSCtransacted = totalSCtransacted + parseInt(receiverAmount) + parseInt(minerFees)
                 } else {
                     //EXCEPTION: In a very few transactions the whole SC output is spent in miner fees, and nothing returns to the wallet of the sender
@@ -216,7 +194,7 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     if (senderFound == false) {
         var senderHash = apiblock.transactions[n].siacoininputoutputs[0].unlockhash
         var senderAmount = (apiblock.transactions[n].siacoininputoutputs[0].value) * -1
-        addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0})
+        addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0, txType: "SfTx"})
         totalSCtransacted = totalSCtransacted + parseInt(minerFees)
     }
 
@@ -224,36 +202,32 @@ exports.sfTransactionProcess = function(apiblock, n, height, timestamp) {
     // Saving the data in SQL Insert queries
     for (var m = 0; m < synonymHahses.length; m++) {
         var toAddHashTypes = "('" + synonymHahses[m] + "','SfTx','" + masterHash + "')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
+        newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, synonymHahses[m]))
     }
 
+    // Adding the masterhash, neccesary for the Addresses routine
     for (var m = 0; m < addressesImplicated.length; m++) {
-        var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-            "," + addressesImplicated[m].sf + "," + height + "," + timestamp + ",'SfTx')"
-        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
-        // This check will look rows with the fields Address and MasterHash to not include a duplicate
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        // Addresses as hash types
-        var toAddHashTypes = "('" + addressesImplicated[m].hash + "','address','')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, addressesImplicated[m].hash))
+        addressesImplicated[m].masterHash = masterHash
     }
+
     var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
-    newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
+    newSql.push(SqlComposer.InsertSql(params, "TxInfo", toAddTxInfo, masterHash))
     
 
     // Saving TX as a component of a block
     var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','SfTx'," + totalSCtransacted + "," + totalSFtransacted + ")"
-    newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
+    newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
 
     // Returns an array with all the SQL sentences
-    var returnArray = [newSql, txsIndexed]
+    var returnArray = [newSql, txsIndexed, addressesImplicated]
     return returnArray
 }
 
 
-exports.sfSingleTransaction = function(apiblock, n, height, timestamp) {
+exports.sfSingleTransaction = async function(params, apiblock, n, height, timestamp, totalContractCost) {
     // EXCEPTION: Orphaned singlets
     // Special cases of transactions not paying miner fees. Only happens in pool payouts of certain mining pools (F2pool)
+
     var totalSFtransacted = 0
     var totalSCtransacted = 0
     var minerFees = 0
@@ -262,7 +236,6 @@ exports.sfSingleTransaction = function(apiblock, n, height, timestamp) {
     var synonymHahses = []
     synonymHahses.push(apiblock.transactions[n].id)
     var newSql = []
-    var addressesAux = []
 
     // Receivers info
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siafundoutputs.length; i++) { // in case of several receivers
@@ -289,43 +262,49 @@ exports.sfSingleTransaction = function(apiblock, n, height, timestamp) {
         }
        
         // SC dividend claim is calculated from the totalcontractcost minus the part indicated in claimstart
-        var senderClaim = apiblock.transactions[n].siafundinputoutputs[j].claimstart
-        senderClaim = ((apiblock.totalcontractcost * 0.039) - senderClaim) / 10000
-        totalSCtransacted = totalSCtransacted + parseInt(senderClaim)
-        senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
-        // Saving the claim independently, as it is a diffirent kind of SC address change ("SfClaim")
-        var toAddAddressChanges = "('" + senderClaimAddress + "','" + masterHash + "'," + senderClaim + 
-            ",0," + height + "," + timestamp + ",'SfClaim')"
-        var checkString = senderClaimAddress + "' and MasterHash='" + masterHash 
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        var toAddHashTypes = "('" + senderClaimAddress + "','address','')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, senderClaimAddress))
+        var senderClaimBlock = apiblock.transactions[n].siafundinputoutputs[j].claimblock // The block of the creation of the parent input
+
+        // Finding the totalContractCost at that block
+        var sqlQuery = "SELECT TotalContractCost FROM BlockInfo WHERE Height=" + senderClaimBlock
+        var result = await SqlAsync.Sql(params, sqlQuery)
+        try {
+            var prevTotalContractCost = BigInt(result[0].TotalContractCost)
+        } catch (e) {
+            var prevTotalContractCost = BigInt(0)
+        }
+
+        // Calculating the claim
+        senderClaim = Number(totalContractCost - prevTotalContractCost) * params.blockchain.siafundFees / params.blockchain.totalSiafunds
+        senderClaim = senderClaim * apiblock.transactions[n].siafundinputoutputs[j].value // We multiply it by the number of SF transacted
+        totalSCtransacted = totalSCtransacted + Math.floor(senderClaim)
+        var senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+
+        // Claim output creation
+        newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
+
+        // Adding the claim to addressesImplicated with a flag of txType
+        addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, txType: "SfClaim"})
     }
 
     // Saving the data in SQL Insert queries
     for (var m = 0; m < synonymHahses.length; m++) {
         var toAddHashTypes = "('" + synonymHahses[m] + "','SfTx','" + masterHash + "')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
+        newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, synonymHahses[m]))
     }
 
-    for (var m = 0; m < addressesImplicated.length; m++) {
-        var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-            "," + addressesImplicated[m].sf + "," + height + "," + timestamp + ",'SfTx')"
-        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
-        // This check will look rows with the fields Address and MasterHash to not include a duplicate
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        
-        // Saving used addressed in a temporal array, as they need to be de-duplicated at the end of the block
-        addressesAux.push(addressesImplicated[m].hash)
-    }
     var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
-    newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
+    newSql.push(SqlComposer.InsertSql(params, "TxInfo", toAddTxInfo, masterHash))
     
     // Saving TX as a component of a block
     var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','SfTx'," + totalSCtransacted + "," + totalSFtransacted + ")"
-    newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
+    newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
+
+    // Adding the master hash to Addresses array
+    for (var m = 0; m < addressesImplicated.length; m++) {
+        addressesImplicated[m].masterHash = masterHash
+    }
 
     // I return 2 elements
-    var returnArray = [newSql, addressesAux]
+    var returnArray = [newSql, addressesImplicated]
     return returnArray    
 }

@@ -1,0 +1,167 @@
+// Configuration file for Navigator
+// For the changes to take effect, restart the script (`pm2 restart navigator`)
+// Additional configurable parameters are available in /modules/params.js, while usually
+// you will not need to change them.
+
+{
+    // Optional: does the Sia daemon use a explorer module? The explorer module is only necessary for obtaining the outputID of two types of TX:
+    // * the output that receives the fees claim of a SiaFund transaction. 
+    // * the output receiving the mining payout
+    // Not using it will not impact substantially the accuracy of SC balances, as the number of these transactions is really small. 
+    // Only the addresses of mining pools and SF owners will show inaccuracies (certain balance deductions will not show up).
+    // Once Sia devs solve issue #3791 of the Sia repository, this last point where the explorer is needed will be droped in a Navigator update
+    // It is safe to use, however, the explorer module. Even if it suffers one of its frequent crashes that corrupt the database, the info that
+    // Navigator uses is never corrupted, so the user can keep using a corrupted explorer module safely.
+    // If you set it to true, remember to enable the explorer module on Sia startup, and take in mind the module will need ~20GB+ on its own
+    "explorerAvailable": false,
+
+    // Using MS SQL Server as the database engine if true. If false, Navigator will use SQLite.
+    // SQLite requires no setup from the user an so it is optimal for an easy setup. Both databases are similary performant,
+    // but with MS SQL Server the initial sync will be faster. You will need to install and configure SQL Server manually
+    "useMsSqlServer": false,
+
+    // This will query SC coin price tracking in CoinGecko and SF in Bisq if true. Using this means a centralization sacrifice, but enables detailed CSV
+    // reports of transactions with FIAT conversions and also creates charts of the evolution of the balance of addresses. Set it to false (default: true)
+    // if you don't want to use CoinGecko as market price aggregator and Bisq as SF price provider
+    "useCoinGeckoPrices": true,
+
+    // Website customization: color theme
+    "colors": {
+        // The main color them of Navigator, related to your branding
+        "accent": "#1a874b",
+        
+        // Background of the header of the site 
+        "headerBackground": "#1c1f1d",
+
+        // The accent color, but two tones less saturated
+        "accentFaded1": "#49664e",
+        "accentFaded2": "#427c4b",
+
+        // The accent color less saturated an with brightness closer to the backround. `decorationSubtle` should be very close to background,
+        // while `decorationContrast` should have more contrast. These colors are used for decorative elements directly on top of the background
+        "decoration": "#7e9489",
+        "decorationSubtle": "#3e664e",
+        "decorationContrast": "#9eb4a9",
+
+        // Background of the site
+        "background": "#2b2f2d",
+        
+        // Shadow of tables. Just subtly different from background
+        "tableShadow": "#202622",             
+        
+        // Color of text
+        "text": "#c0c0c0",
+        
+        // Basic colors
+        "yellow": "#aba147",
+        "red": "#dd5e5e",
+        "brightRed": "#dd4444",
+        "green": "#5cae81",
+        "darkGreen": "#2ba84b",
+        "lime": "#809741",
+        
+        // Header of tables. Needs to contrast sharply with the background
+        "boxHeaders": "#777777",
+
+        // Backgorund of odd cells in tables. Even cells will use `black`
+        "oddCellsTable": "#111111",
+
+        // Borders of tables
+        "tableBorders": "#333333",
+        
+        // Max black and white, and different tones of grey
+        "white": "#ffffff",
+        "black": "#000000",
+        "grey1": "#333333",
+        "grey2": "#666666",
+        "grey3": "#888888",
+        "grey4": "#bbbbbb",
+        "grey5": "#222222",
+
+        // Footer color and text
+        "footer": "#111111",
+        "footerText": "#c0c0c0",
+
+        // QR codes. Background needs to be the darkest of the two (most of QR readres will not work otherwise)
+        "qrCodeBackground": "#000000",
+        "qrCode": "#bababa",
+
+        // The border of the stat cards shown on the landing page.
+        "statCardBorder": "#777777"
+    },
+
+    // Donation address. It will be displayed to the user as a suggestion after requesting a CSV transaction history report.
+    // Default address is my donations address
+    "donationAddress": "bde3467039a6d9a563224330ff7578a027205f1f2738e1e0daf134d8ded1878cf5870c41927d",
+
+    // The link to your Github repository. An icon will be displayed at the footer of the webpage with the link
+    "githubRepository": "https://github.com/hakkane84/navigator-sia",
+
+    // "Routers" is a technology by keops.cc that allows Navigator to interact safely with Sia daemons in remote location. The router needs
+    // to be installed in the remote machine, and at the time of writing this, the code is not yet ready to be open sourced. By default,
+    // if set to false, so Navigator will interact instead with a local Sia node. The sole advantage of using routers is
+    // that it allows to usue an infrastructure of geo-redundant Sia nodes, but normal setups will not obtain any benefit.
+    "useRouters": false,
+
+    // If using a local Sia daemon (useRouters=false), indicate here the the net address and port of it. Default: 'localhost:9980'
+    "localDaemon": "localhost:9980",
+
+    // Routers information. It doesn't need to be configured unless 'useRouters' (above) is configured as "true"
+    "siaRouters": [],
+    "siaRoutersAuthkey": "",
+
+    // Parameters for accessing the MS-SQL database. Configure this only if MS SQL Server is being used. SQLite doesn't need any configuration
+    "sqlLogin": {
+        "server": "localhost",
+        "database": "navigator",
+        "user": "",
+        "password": "",
+        "port": 1433,
+        "connectionTimeout": 60000,
+        "requestTimeout": 60000,
+        "pool": {
+            "max": 100,
+            "min": 0,
+            "idleTimeoutMillis": 30000
+        }
+    },
+
+    // Public IP of this server. Example: `121.31.2.414` or `myexplorer.com`
+    "publicIp": "",
+
+    // Ports used by the API and web server
+    "httpPort": 80,
+    "httpsPort": 443,
+
+    // Set this to true if you want to use SSL authentication for the API and webserver. Remember to place the certificates on the
+    // path indicated bellow
+    "useSsl": false,
+
+    // SSL certificates path (only needed to be configured if `useSsl` is true). Place the following files in the indicated folder path
+    // (delaut: ./modules/ssl_certificates/):
+    // * `navigator.key`
+    // * `navigator.crt`
+    // * `navigator.ca-bundle`
+    "sslCertificatesPath": "./modules/ssl_certificates/",
+
+    // API server limits:
+    // The limit of queries a single IP can do per day. This avoids Google bots and other crawlers to siege the server. 25000 queries/day is default
+    // and reasonable. An error 429 is returned if surpassed. Set it to 0 to disable
+    "apiLimitPerIp": 25000,
+
+    // Whitelist of IPs unrestricted
+    "apiWhitelist": [
+        "::ffff:192.168.1.1" // Local IP
+    ],
+
+    // Blacklist of IPs
+    "apiBlacklist": [],
+
+    // API logs verbosity. False by default
+    "verboseApiLogs": true, // An entry will be printed for every request to the API server
+    "hourlyApiLogs": false, // Usage stats, hourly
+    "dailyApiLogs": false, // Usage daily stats, including number of requests per IP
+
+    // How often the user browser will check for updating the landing page. Default: 15000 milliseconds
+    "landingRefreshPeriod": 15000
+}

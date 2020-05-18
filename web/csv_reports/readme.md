@@ -1,0 +1,1 @@
+Do not remove this folder. The temp CSV files from transaction histories requested by users will be saved here and deleted after 5 minutes

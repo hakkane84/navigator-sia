@@ -1,84 +1,110 @@
 # navigator-sia
-An advanced blockchain explorer for the Sia network, built on Node.js + SQL
+An advanced blockchain explorer for the Sia network, built on Node.js + SQL.
 
-![Capture](https://github.com/hakkane84/navigator-sia/blob/master/Capture.JPG)
+![Capture](/example_capture.jpg)
 
-## General disclaimer
-While I have done my best to make the code reliable and easy to understand with multiple comments, I need to clarify I am not a professional programmer. As such, it is entirely possible that I haven’t followed good coding practices or conventions. Also, this is the first public repository I open. Considering these aspects, I apologize in advance for possible rough edges and parts of the code difficult to understand or unoptimized. Speaking clearly. the code will look ugly, but in my hands,  it works as expected. Also, do not expect constant updates on the go as I correct stuff or add features. However, from time to time I will try to update this repository with the most updated build.
+## Features
+
+* Full blockchain explorer capabilities
+* Simple setup: Only a synced Sia client and Node.js are required. No need to install a database engine, as a self-contained SQLite database is used by
+default
+* Indexer, database manager, API server and website server contained in the same script. Literally, just launch `navigator.js` and check your IP in a browser
+* Transactions made of multiple individual ones in the same block are merged to facilitate the usuer-friendlyness when they query a hash. For example, the submission of an storage proof is usually made of 2 individual transactions. In Navigator both can be searched, and will return the same information, informing the user that both belong to the process of submitting a storage proof
+* It follows consensus rules not included on the raw blockchain, as indicating when a contract failed or succeded or the dividend paid to SiaFund holders during a contract formation
+* Customized pages for each type of transaction: Host announcements will show the IP announced, contracts will display a timeline of it with its associated revisions and storage proofs...
+* Search transactions in bulk to get an overview of a whole Sia wallet. Up to 100.000 addresses can be queried this way
+* Search host contracts in bulk to get an overview of the timeline and stats of the contracts. Up to 100.000 contracts can be searched
+* Transactions CSV file download and a chart with evolution of the balance for every address or batch of addresses. Amounts converted to 25+ different currencies at the exchange rate of each day
+* Easily customizable color theme and branding. All the setup can done altering the `config.json` file
+
+## New on version 2
+
+For final users:
+* Dashboard-style landing page. Auto-updated and animated
+* Searh transaction outputs by their hash. Also, the search of unspent outputs of an address (previously slow for large addresses) is now out of beta and will work almost instantly even for addresses with thosands of transactions. This will be usueful for developers and users of hardware wallets
+* Unconfirmed transactions improved tracking: addresses will show the unconfirmed balance and transactions when searching an address
+* CSV file downloads with the transaction history. Charts of the balance evolution for an address or batch of addresses. Amounts transformed to the selected FIAT currency (these features were already available in SiaStats.info, but now are open source too)
+* Thanks to the scalability improvements, now you can search up to 100K addresses or contracts in bulk
+* Blockchain reorgs recording. There is not yet a UI for this, but reorg events can be checked with the API `/navigator-api/reorgs`
+* Multiple bugs corrected
+
+For explorer maintainers:
+* The most stable and reliable version of Navigator ever. The Sia `explorer` module is not necessary anymore, what results in more accurate data, no downtime due to critical bugs on the module and setups easier to maintain (by orders of magnitude)
+* Ultra-easy setup. No MS SQL Server is required, instead a self-contained SQLite databse is used by default. The blockchain indexer, the API server and the website server (using `express`) are all launched by a single script. Just launch one script and check your IP in a web browser. Literally.
+* Easy to customize, including the color theme, ports and options, just editing a `config.json` file
+* A "watchdog" routine, together with using `pm2` will guarantee the explorer running unattended
+* A UI needs to be developed for this, but Navigator now keeps a database table with the balance of every address on real time
+
+
+## System minimal requirements
+
+* A Sia client running and fully synced to the blockchain
+* `Node.js` installed. Version 10.xx is recommended. Version 12 and onwards are not compatible with some dependencies at the moment of writting this
+* The HTTP port (and the HTTPS port if SSL was enabled on the config file) indicated on the config file open to the world in order to access the web frontend (default: `80` for HTTP and `443` for optional HTTPS)
+* At least 40GB of disk space available (the database occcupies ~25-30). SSD or NVMe necessary for the database. IOPS of the disk will impact dramatically the speeds of indexing and retrieval of data
+
+## Installation and usage
+
+* `npm install`
+* `npm install -g pm2`
+* (Optional) Customize ports, web color theme, preferred database engine and many other parameters in the `config.json` file. Just read the comments on the file and follow them
+* `pm2 start navigator.js`. The blockchain indexer, the API server and the web server will start immediately. The website frontend will be available on the ports specified on the `config.json` file
+
+The logs of the program can be accessed using `pm2 monit` or `pm2 logs`. For more info about using PM2, check its [documentation site](https://pm2.keymetrics.io/docs/usage/quick-start/). If you make any change to the configuration file, just restart the script with `pm2 restart navigator`.
+
+### Initial indexing
+
+If this is the first startup, the database and tables will be created, and historic coin prices will be retrieved in first place. Once this initial setup is complete, the blockhain indexing will start, and data will become available on the website immediately, showing the syncing status on the landing page.
+
+The initial sync will take approximately 5 days (or longer, depending on your hardware), as of May 2020. Certain parts of the blockchain, more "dense" in transactions, will take considerable longer to index. For example, blocks between 30000 and 150000 will take 4x (or more) longer than recent blocks.
+
+### API
+
+The script serves not only the website and assets, but also a complete API. This section needs detailed documentation, but an overview of most of the endpoints and the structure of the responses can be checked in these schematics:
+
+![API scheme](/api_scheme1.jpg)
+![API scheme2](/api_scheme2.jpg)
+
+### Re-indexing the database
+
+If a re-indexing of the blockchain is required (for example, after a code upgrade that changes the outcome of already indexed transactions), a "live reindexing" mode is available. Stop the process handled by pm2 and launch the script in Node followed by the block from which you want to start the re-index. For example `node navigator.js 180000`. In this mode, while Navigator is iddle (waiting for new blocks) it will reindex blocks. Even if the script crashes, the re-indexing will resume where it was left. Once the reindexing is done, you can stop the script and re-start it under `pm2` control.
+
+Alternatively, you can use the tool `/tools/reindexer.js` to order a manual re-indexing of the specified blockchain segment. For example: `node reindexer.js 150000 151000`. The navigator.js main process **needs to be stopped** while using this script if you are using SQLite as database engine (the default).
+
+### Database engine
+
+You can choose between SQLite and MS SQL Server as the database engine. SQLite, the default option, requires zero setup and no installation. It is an embedded and portable database file called `navigator.db`.
+
+If you are already using MS SQL Server, you might prefer to use it instead. For this, just change in the config file the `useMsSqlServer` to `true` and introduce the credentials in the `sqlLogin` object. You will need to create manually the `navigator` database using SSMS.
+
+In terms of performance, both database engines are very similar, where SQL Server performs slightly better only in batch retrieval operations. Unless you have specific reasons to use SQL Sever, I encourage you to use the default choice of SQLite/
+
+### Using or not the `explorer` module of Sia
+
+Navigator can work without enabling the `explorer` module of Sia. However, due to some information missing from the `/consensus` API endpoint of Sia, it is not possible to know the output ID of miner payouts and SiaFund claimed coins. These amounts will show up correctly in Navigator, but when these amounts are spent, the addresses will not show the deducted coins. In other words, if you don't enable the explorer module, every transaction will show correctly, but the balances of SC of mining pools and SF owners will not be accurate. Only these two kinds of wallets (a marginally small percentage of the users) are impacted, the rest of wallets will be accurate.
+
+If you optionally enable the `explorer` Sia module (take in mind it will take on its own ~25GB on your Sia folder) and set to `true` the variable `explorerAvailable` on the config file of Navigator, `/explorer` calls will be used to complete this missing information and show 100% accurate data for these special wallets. Even if the `explorer` module of Sia is deprecated and unstable, Navigator will keep working perfectly, even after the frequent crtical errors of this module. In other words, even if this Sia module is unstable, Navigator will not be impacted and you will not need to perform any additional maintenance.
+
+Once the Sia developers fix the issue [#3791](https://gitlab.com/NebulousLabs/Sia/-/issues/3791), a future update of Navigator will drop this last point where the `explorer` module can be helpful.
+
+## Included tools
+
+Several utilities are included in the `tools` folder. With the exception of `database_query.js`, it is highly recommended to stop the main `navigator.js` script while using them if your database of choice is SQLite:
+
+* `database_query.js`: Will perform a query to your database in SQL language. There are many tools available for this, but this simple tool can give you a fast answer to a query. Example of usage: `node database_query.js SELECT * FROM BlockInfo WHERE Height = 12345`
+* `reindexer.js`: Will reindex a block or a segment of blocks. Example: `node reindexer.js 12000 12050`
+* `delete_blocks.js`: Will delete the entries in the database of a block or a segment of blocks. Example: `node delete_blocks.js 12000 12050`
+* `mining_pools_updater.js`: If a new mining pool is announced and you know its payout address, add an entry to the `poolAddresses.json` file and then apply this tool to assign old "Unknown" blocks to this new pool. It takes the path of the JSON file as an argument
+* `database_reset.js`: Deletes ALL the blockchain contents from the database irreversively
+
+## Compatibility with other blockchains and Sia forks
+
+Navigator is a blockchain explorer fully tailored to the Sia blockchain and I will gladly assist any developer aiming to deploy a mirror of it or modify it as long as it remains in the scope of the Sia blockchain. The code will **not** work out of the box for other forks of Sia or blockchains, present or future, and will require extensive modifications due to the many particularities and specificities of each blockchain. Navigator is open source and you are free to try to adapt it to other blockchain, but it will be your full responsability to ensure its accuracy and I will not assist you in this task.
+
+In any case, you are expected to fully respect the GNU AGPLv3 license terms, including (but not limited to) publishing the modified code repository and linking it to your explorer website, as well as preserving the authorship, attribution and license of the code in this repository.
 
 ## License
-This software is offered as open source code with the aim to allow the proliferation of high-quality Sia blockchain explorer websites. The license is GNU AGPL v3.0, what means that if you run a modified version of the code in your server, you are demanded to publish its modified code, preserving this same license and the code ownership rights. This is meant to ensure the pogress and improvement of this blockchain explorer and its public availability. Check the License file for full details.
 
-## Description and components
-Navigator is a complete blockchain explorer solution for the Sia decentralized storage network. It includes advanced capabilities like discerning types of transactions depending on their finality, checking merged balances of up to 1000 addresses or file contract analysis for hosts for up to 1000 simultaneous contracts.
+This software was made open source with the aim to facilitate the availability of high-quality Sia blockchain explorer websites. It uses the GNU AGPL v3.0 license, meaning that if you run a modified version of the code in your server, you are demanded to publish its modified code, preserving this same license and the code authorship and attribution. The goal is ensuring the progress and continuous improvement of this codebase as well as the public availability of open source Sia explorers in the future. Please check the License file for full details.
 
-Navigator is the technology that powers https://siastats.info/navigator
-
-It is composed by the following 3 elements:
-
-* A blockchain indexer that collects information from API calls to Sia, processes them and saves them to an SQL database. It performs both the initial indexing task and real-time indexing of new blocks added to the blockchain. It is initialized in the file `navigator.js`
-* A RESTful server with multiple endpoints that executes queries to the SQL database, processes them and serves them to the user as a JSON object. It is initialized in the file `modules/restserver.js`
-* A single-page web frontend that collects the user request, makes API calls and visualizes the returned JSON in a user-friendly fashion. The visualization is customized for the type of blockchain object queried. It is optional to use, and it is contained on the `web/` folder
-
-## Technical details
-At a low level, Navigator applies some basic blockchain consensus rules that are not “hardcoded” directly into the blockchain as transactions. This includes calculating the claimed dividend a Siafund sender is entitled after a transaction or assigning funds to the corresponding addresses after a failed contract where the storage proof was not provided. Thanks to this, Navigator is tracking correctly every single Hasting moving on the network, to the best of my knowledge.
-
-Most of the transactions initiated by a user in Sia are composed by 2 or 3 chained transactions on the blockchain. To improve the user experience, so when they see a transaction in the blockchain they see both a sender address they are familiar with and the final receiver of it, Navigator merges them into a single TX with 2 (or 3 in the case of SF transactions) “synonym hashes”, all of them showing the same view if queried. The intermediate recipient of the first address (that acts as sender in the second) is omitted to simplify the view of the operation. 
-
-There are 2 exceptions to this “merging”. In file contract formations the first 2 TX are called “Allowance posting” and “Collateral posting” while the 3rd one is called “Contract formation”. In Proofs of Storage the first TX is called “Proof of Storage” while the second is called “Contract resolution”.
-
-## Requirements
-*	Microsoft SQL Server installed and running on start. Mixed logging to the database is recommended. Credentials for a user with read and write permissions. While SQL Server is a paid product, remember that MS offers the full-featured Developer Edition available for free.
-*	An SQL management software, as SQL Server Management Studio (SSMS), bundled as an optional installation of SQL Server
-*	Sia software running and synchronized with the network
-*	The explorer module of Sia enabled, with its database synchronized. This requirement will be dropped on a future update of Navigator
-*	Node.js installed
-
-The following node NMP modules dependencies manually installed:
-*	`Sia.js`
-*	`mssql`
-*	`express`
-*	`body-parser`
-*	`cron`
-*	`forever` is optional but highly recommended
-
-For the website frontend to work properly (not necessary if only the API server is going to be used): 
-*	SSL-secured server
-*	SSL private key and certificate placed on `modules/ssl_certificate/`. Configure the variables at `credentials` on `modules/restserver` accordingly
-*	CORS enabled on the webserver
-
-## Installation
-* Create a new SQL database, with the name `navigator`. Authorize a new user in this database with write and read permission. I recommend SSMS for these tasks
-*	Change SQL credentials at the `sqlLogin` array both in `navigator.js` and `modules/sqlfunctions.js`
-*	Initialize the tables of the database using the SQL scripts at `tools/create_tables.sql` I recommend SSMS for this. Add manually some extra Indexes to the columns of each tableas indicated on the comments of the script
-*	Replace the path of the Node.js dependencies (with the place where you installed them )at the beginning of each `.js` file (both `navigator.js` and the scripts at `/modules`)
-*	For the website frontend to work, replace in `/web/navigator.html` the value of the `apiPath` variable with the global path of your API server instead of localhost (by default, it is set up as “https://localhost:3500/navigator-api”)
-*	Add SSL key and credential on the folder `modules/ssl_certificate`. Change the path of these files in `modules/restserver.js`
-*	If during the initial indexing the script is unable to index a specific block multiple times, add its number at the `blocksToSkip` array in `navigator.js`
-
-## Usage 
-Launch `navigator.js` on the command line, preferentially using Forever (`forever start navigator.js`, logs will be saved to a file, check the `forever` documentation) as it is not infrequent that the script crashes. If not launched trough Forever, the script will have to be -reinitiated manually.
-
-Launch `modules/restserver.js` on the command line, preferentially using Forever (`forever start modules/navigator.js`)
-
-The initial indexing will start immediately, and the API server will become available in port 3500. Queries to the database are performed through API calls (either GET or POST). The JSON responses consists on an array of multiple objects. The type of object depends on the specific endpoint called, and on the type of hash when the `/hash/:hash` call is executed. Refer to the following figure to understand the outcome of each call:
-
-![API scheme](https://github.com/hakkane84/navigator-sia/blob/master/API_scheme1.JPG)
-![API scheme2](https://github.com/hakkane84/navigator-sia/blob/master/API_scheme2.JPG)
-
-An optional website frontend is available on /web. Deploy its contents on your favorite webserver (IIS, XAMPP…). A complete working frontend (with custom CSSs) can be found at http://siastats.info/navigator . Remember to change the variable `apiPath` on `web/navigator.html` to make it available externally. Navigator can only be accessed externally in a website secured by SSL, with its keys and certificates placed on `modules/ssl_certificate/`.
-
-
-## Bundled tools
-*	`/tools/create_tables.sql` : Initializes the tables for a database. Don’t forget to manually add indexes to the columns indicated on the comments of the file
-*	`/tools/delete_contents.sql` : Deletes ALL the information contained on the tables of the database
-*	`/tools/delete_from_block.sql` : Deletes the contents of a database starting on the specified block and upwards. Useful if you think recent information has been miss-indexed. Customize the height of the block on each of the 8 lines of the script
-*	`/tools/navigator_gap_repair.js` : Deletes and re-indexes the block (or blocks) specified on the `blocks` variable. Invoke in the command line as `node navigator_gap_repair.js`. Useful to repair a specific block
-* `/tools/navigator_miningpools_inserter.js` : updates the database with the mining pool's addresses, according to the contents of the `poolAddresses.json` file
-
-## Future development directions
-While already functional, Navigator is a work-in-progress project. Besides correcting the natural bugs that might be found over the months following the release, I am committed to make it evolve in several aspects, including the following:
-
-*	Currently the database is constructed on top of the Sia `explorer/block` API responses. The explorer module of Sia is currently unmaintained and highly prone to crashes and corruption. The fist short-term goal is replacing it by `consenus/block/:height` API calls, while Navigator builds its own block metadata info. In other words: the goal is to replace completely the dependence on explorer
-*	To facilitate the deployment and maintenance of the database, SQL Server will be replaced by and embedded database solution as SQLite or SQL Server Compact.
-*	In the mid-long term, the whole code will be translated to Golang and implemented as an optional module of Sia. Thus, Navigator could become a module complementary or substitutive of explorer for other Sia infrastructure providers.
+I made really easy to comply with this license: use the clone button of this repository, push changes to your clone and just change the variable `githubRepository` in the `config.json` file. A GitHub icon linking to your repo will be added automatically to the footer of your Navigator website!!

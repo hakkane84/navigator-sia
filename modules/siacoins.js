@@ -1,14 +1,8 @@
-// =============================
-//      SIACOINS OPERATIONS
-// =============================
-
+// Indexes Siacoin operations
 var exports = module.exports={}
+var SqlComposer = require("./sql_composer.js")
 
-// Load external modules
-var SqlFunctions = require('../modules/sqlfunctions.js')
-
-
-exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
+exports.scTransactionProcess = function(params, apiblock, n, height, timestamp) {
     
     var totalSCtransacted = 0
     var addressesImplicated = []
@@ -23,7 +17,7 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
         var receiverHash = apiblock.transactions[n].rawtransaction.siacoinoutputs[i].unlockhash
         var receiverAmount = parseInt(apiblock.transactions[n].rawtransaction.siacoinoutputs[i].value)
         totalSCtransacted = totalSCtransacted + receiverAmount
-        
+
         // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
         var receiverRepeatedBool = false
         for (k = 0; k < addressesImplicated.length; k++) {
@@ -35,6 +29,7 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
         if (receiverRepeatedBool == false) { // If address not repeated, then add the operation
             addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
         }
+        
     }
     // Synonyms on the receiver TX
     synonymHahses.push(apiblock.transactions[n].id)
@@ -109,10 +104,20 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
         for (var j = 0; j < apiblock.transactions[n].siacoininputoutputs.length; j++) { // in case of several inputs
             var senderHash = apiblock.transactions[n].siacoininputoutputs[j].unlockhash
             var senderAmount = parseInt(apiblock.transactions[n].siacoininputoutputs[j].value) * -1
-            addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
+            // In case of multiple outputs coming from the same address, like in defrag operations
+            var senderRepeatedBool = false
+            for (k = 0; k < addressesImplicated.length; k++) {
+                if (senderHash == addressesImplicated[k].hash) { // Merging amounts
+                    addressesImplicated[k].sc = addressesImplicated[k].sc + senderAmount
+                    senderRepeatedBool = true
+                }
+            }
+            if (senderRepeatedBool == false) { // If address not repeated, then add the operation
+                addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
+            }
         }
     }
-    
+
     // Adding the fees to the total transacted
     totalSCtransacted = totalSCtransacted + minerFees
 
@@ -121,68 +126,76 @@ exports.scTransactionProcess = function(apiblock, n, height, timestamp) {
     if (hostAnnouncementBool == false) { // Conventional TX
         for (var m = 0; m < synonymHahses.length; m++) {
             var toAddHashTypes = "('" + synonymHahses[m] + "','ScTx','" + masterHash + "')"
-            newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
+            newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, synonymHahses[m]))
         }
         // Tx Info
         var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
-        newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
+        newSql.push(SqlComposer.InsertSql(params, "TxInfo", toAddTxInfo, masterHash))
         // Saving TX as a component of a block
         var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','ScTx'," + totalSCtransacted + ",0)"
-        newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
+        newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
 
     } else { // Host announcement
         for (var m = 0; m < synonymHahses.length; m++) {
             var toAddHashTypes = "('" + synonymHahses[m] + "','host ann','" + masterHash + "')"
-            newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
+            newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, synonymHahses[m]))
         }
         
         // Tx Info
         var toAddHostAnnInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ",'" + decodedIp + "')"
-        newSql.push(SqlFunctions.insertSql("HostAnnInfo", toAddHostAnnInfo, masterHash))
+        newSql.push(SqlComposer.InsertSql(params, "HostAnnInfo", toAddHostAnnInfo, masterHash))
         // Saving TX as a component of a block
         var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','host ann'," + totalSCtransacted + ",0)"
-        newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
+        newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))        
     }
 
-    var addressesAux = []
     for (var m = 0; m < addressesImplicated.length; m++) {
-        // Address changes
-        if (hostAnnouncementBool == false) { // Conventional SC transaction
-            var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-                ",0," + height + "," + timestamp + ",'ScTx')"
-        } else { // Host announcement
-            var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-                ",0," + height + "," + timestamp + ",'host ann')"
-        }
-        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        
-        // Saving used addressed in a temporal array, as they need to be de-duplicated at the end of the block
-        if (addressesImplicated[m].sc > 0) { // Only receivers' addresses need to be incorporate to the database, as senders should be already from a previous block
-            addressesAux.push(addressesImplicated[m].hash)
+        // Adding necessary fields
+        addressesImplicated[m].masterHash = masterHash
+        addressesImplicated[m].sf = 0
+
+        // If it was a host announcement, add it
+        if (hostAnnouncementBool == true) {
+            addressesImplicated[m].txType = "host ann"
         }
     }
 
-    // I return 2 elements
-    var returnArray = [newSql, addressesAux, txsIndexed]
+    // I return 3 elements
+    var returnArray = [newSql, txsIndexed, addressesImplicated]
     return returnArray
 }
 
 
-exports.scSingleTransaction = function(apiblock, n, height, timestamp) {
+exports.scSingleTransaction = function(params, apiblock, n, height, timestamp) {
     // Special cases of transactions not paying miner fees. Only happens in pool payouts of certain mining pools
     var totalSCtransacted = 0
     var addressesImplicated = []
     var synonymHahses = []
     var hostAnnouncementBool = false
     var newSql = []
+    var masterHash = apiblock.transactions[n].id
+    var minerFees = 0 // It is an empty array, but I want to make clear this TX did not paid fees
+
+    // Determining if the TX is a Host announcement
+    var arbitraryData = apiblock.transactions[n].rawtransaction.arbitrarydata
+    if (arbitraryData.length > 0) {
+        slice = arbitraryData[0].slice(0,14)
+        if (slice == "SG9zdEFubm91bm") {
+            hostAnnouncementBool = true
+
+            var hostIp = arbitraryData[0].slice(32)
+            var s = hostIp.search("AAAAAAAAAA")
+            hostIp = hostIp.slice(0 , (s-9))
+            var decodedIp = Buffer.from(hostIp, 'base64').toString('ascii')
+        }
+    }
 
     // Receivers info
     for (var i = 0; i < apiblock.transactions[n].rawtransaction.siacoinoutputs.length; i++) { // in case of several receivers
         var receiverHash = apiblock.transactions[n].rawtransaction.siacoinoutputs[i].unlockhash
         var receiverAmount = parseInt(apiblock.transactions[n].rawtransaction.siacoinoutputs[i].value)
         totalSCtransacted = totalSCtransacted + receiverAmount
-        
+
         // In case of several outputs being received by the same address: we add the amounts ro the first entry if the same address appears again
         var receiverRepeatedBool = false
         for (k = 0; k < addressesImplicated.length; k++) {
@@ -192,7 +205,7 @@ exports.scSingleTransaction = function(apiblock, n, height, timestamp) {
             }
         }
         if (receiverRepeatedBool == false) { // If address not repeated, then add the operation
-            addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
+            addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount, "sf": 0, "masterHash": masterHash})
         }
     }
 
@@ -209,71 +222,59 @@ exports.scSingleTransaction = function(apiblock, n, height, timestamp) {
             }
         }
         if (senderRepeatedBool == false) { // If address not repeated, then add the operation
-            addressesImplicated.push({"hash": senderHash, "sc": senderAmount})
+            addressesImplicated.push({"hash": senderHash, "sc": senderAmount, "sf": 0, "masterHash": masterHash})
         }
     }
-
-    // MasterHash as synonym
-    synonymHahses.push(apiblock.transactions[n].id)
-    var minerFees = 0 // It is an empty array, but I want to make clear this TX did not paid fees
-    var masterHash = apiblock.transactions[n].id // I abitrarily decide the receiver's TX hash is the "Master Hash" (as in the SiaUI) (different from SF operations, legacy reasons)
-
 
     // Saving the data in SQL Insert queries
     // Tx type
-    for (var m = 0; m < synonymHahses.length; m++) {
-        var toAddHashTypes = "('" + synonymHahses[m] + "','ScTx','" + masterHash + "')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, synonymHahses[m]))
-    }
+    var toAddHashTypes = "('" + masterHash + "','ScTx','" + masterHash + "')"
+    newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, masterHash))
     
     // Tx Info
     var toAddTxInfo = "('" + masterHash + "','" + synonymHahses + "'," + height + "," + timestamp + "," + minerFees + ")"
-    newSql.push(SqlFunctions.insertSql("TxInfo", toAddTxInfo, masterHash))
+    newSql.push(SqlComposer.InsertSql(params, "TxInfo", toAddTxInfo, masterHash))
     
     // Saving TX as a component of a block
     var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','ScTx'," + totalSCtransacted + ",0)"
-    newSql.push(SqlFunctions.insertSql("BlockTransactions", toAddBlockTransactions, masterHash))
-
-    var addressesAux = []
-    for (var m = 0; m < addressesImplicated.length; m++) {
-        // Address changes
-        if (hostAnnouncementBool == false) { // Conventional SC transaction
-            var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-                ",0," + height + "," + timestamp + ",'ScTx')"
-        } else { // Host announcement
-            var toAddAddressChanges = "('" + addressesImplicated[m].hash + "','" + masterHash + "'," + addressesImplicated[m].sc + 
-                ",0," + height + "," + timestamp + ",'host ann')"
-        }
-        var checkString = addressesImplicated[m].hash + "' and MasterHash='" + masterHash 
-        newSql.push(SqlFunctions.insertSql("AddressChanges", toAddAddressChanges, checkString))
-        
-        // Saving used addressed in a temporal array, as they need to be de-duplicated at the end of the block
-        addressesAux.push(addressesImplicated[m].hash)
-    }
+    newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
 
     // I return 2 elements
-    var returnArray = [newSql, addressesAux]
+    var returnArray = [newSql, addressesImplicated]
     return returnArray
 }
 
 
-exports.addressesSave = function(totalAddresses) {
-    var newSql = []
+exports.legacyHostAnnouncements = function(params, api, i, height, timestamp, sqlBatch) {
+    // Some very old transactions anounce a host without paying miner fees or transacting a single siacoin
+    // NOTE: strikingly, the same Tx Hash announcing the same host (legacy) can appear in multiple blocks. For SQL database compatibility,
+    // and due to the small value of presenting these multiple transactions, I am not making an exception that allows duplicated hashes
 
-    // Sorting and deleting duplicates among the addresses, to save them as hash types
-    totalAddresses.sort()
-    for (var o = 0; o < totalAddresses.length; o++) {
-        if (totalAddresses[o] == totalAddresses[o-1]) {
-            totalAddresses.splice(o,1)
-            o--
-        }
-    } 
+    var masterHash = api.transactions[i].id
+    var hostIp = api.transactions[i].arbitrarydata[0]
+    
+    // Format 1: SG9zdEFubm91bmNlbWVudBEAAAAAAAAAMzcuNTkuMzcuMTg1Ojk5ODI=
+    // Format 2: SG9zdEFubm91bmNlbWVudBAAAAAAAAAAOTkuNTYuOC4xNTI6OTk4Mg==
+    var s = hostIp.search("NlbWVud")
+    hostIp = hostIp.slice(s+18)
+    if (hostIp.slice(0, 10) == "bmFyd2FsIH") {
+        // It is a Narwal wallet announcement, ignore it
+    } else {
+        var decodedIp = Buffer.from(hostIp, 'base64').toString('ascii')
+        
+        // Tx as a hash type
+        var toAddHashTypes = "('" + masterHash + "','host ann','" + masterHash + "')"
+        sqlBatch.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, masterHash))
 
-    // Addresses as hash types
-    for (var p = 0; p < totalAddresses.length; p++) {
-        var toAddHashTypes = "('" + totalAddresses[p] + "','address','')"
-        newSql.push(SqlFunctions.insertSql("HashTypes", toAddHashTypes, totalAddresses[p]))
+        // Host announcement info Info
+        var toAddHostAnnInfo = "('" + masterHash + "',''," + height + "," + timestamp + ",0,'" + decodedIp + "')"
+        sqlBatch.push(SqlComposer.InsertSql(params, "HostAnnInfo", toAddHostAnnInfo, masterHash))
+
+        // TX as a component of a block
+        var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','host ann',0,0)"
+        sqlBatch.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
     }
 
-    return newSql
+    // No change in the balance of any address in these transactions, we just return sqlBatch
+    return sqlBatch
 }
