@@ -1,0 +1,39 @@
+{
+  "name": "navigator-sia",
+  "version": "2.0.0",
+  "description": "An advanced blockchain explorer for the Sia network",
+  "main": "navigator.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hakkane84/navigator-sia.git"
+  },
+  "keywords": [
+    "sia",
+    "blockchain",
+    "explorer"
+  ],
+  "author": "Salvador Herrera",
+  "license": "AGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/hakkane84/navigator-sia/issues"
+  },
+  "homepage": "https://github.com/hakkane84/navigator-sia#readme",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "babel-runtime": "^6.26.0",
+    "body-parser": "^1.19.0",
+    "cron": "^1.7.2",
+    "csvtojson": "^2.0.10",
+    "express": "^4.17.1",
+    "jsonexport": "^2.4.1",
+    "mssql": "^5.1.0",
+    "qrcode": "^1.4.4",
+    "request-promise": "^4.2.4",
+    "sia.js": "^0.4.2",
+    "sqlite3": "^4.1.1",
+    "strip-json-comments": "^3.1.0"
+  }
+}
