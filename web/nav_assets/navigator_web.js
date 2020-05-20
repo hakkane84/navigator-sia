@@ -1106,15 +1106,17 @@ function openTab(evt, cityName) {
                 addRowReceiver(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, firstReceiverBool, colorInBox)
 
                 // Exceptional contracts where some amount returns to the renter address in the contract formation
-                if (data[5].length > 0) {
-                    var objectInBox = "Renter address"
-                    var addressInBox = shortHash(data[5].Address)
-                    var valueInBox = readable(data[5].ScChange) + " SC"
-                    var linkInBox = htmlPath + "?search=" + data[5].Address
-                    var iconInBox = "renter"
-                    var colorInBox = theme.darkGreen
-                    var firstReceiverBool = false
-                    addRowReceiver(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, firstReceiverBool, colorInBox)
+                if (data[5].transactions.length > 0) {
+                    for (var i = 0; i < data[5].transactions.length; i++) {
+                        var objectInBox = "Renter address"
+                        var addressInBox = shortHash(data[5].transactions[i].Address)
+                        var valueInBox = readable(data[5].transactions[i].ScChange) + " SC"
+                        var linkInBox = htmlPath + "?search=" + data[5].transactions[i].Address
+                        var iconInBox = "renter"
+                        var colorInBox = theme.darkGreen
+                        var firstReceiverBool = false
+                        addRowReceiver(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, firstReceiverBool, colorInBox)
+                    }
                 }  
 
                 // SiaFund fees
