@@ -105,7 +105,14 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         // Address changes
         addressesImplicated.push({"hash": renterAllowanceSender, "sc": (renterAllowanceValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
         addressesImplicated.push({"hash": hostCollateralSender, "sc": (hostCollateralValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
-
+        
+        // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
+        if (tx.siacoinoutputs != null) {
+            for (var i = 0; i < tx.siacoinoutputs.length; i++) {
+                addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+            }
+        }
+        
     } else if (tx.rawtransaction.siacoininputs.length == 1) {
         // EXCEPTIONS:
         // On the early days of Sia, looks like the file contracts had very different rules. Looking at the first file contract at block #1008, there was a single
