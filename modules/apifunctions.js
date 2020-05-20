@@ -228,9 +228,9 @@ exports.Hash = async function(params, res, req) {
             var sqlQuery = "SELECT Address,ScChange FROM AddressChanges WHERE MasterHash = '" + masterHash + "' AND ScChange > 0"
             var recordset = await SqlAsync.Sql(params, sqlQuery)
             if (recordset.length != 0) {
-                resJson.push(recordset[0])
+                resJson.push({transactions: recordset})
             } else {
-                resJson.push({})
+                resJson.push({transactions: []})
             }
         }
 

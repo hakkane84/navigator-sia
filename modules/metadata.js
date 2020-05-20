@@ -118,14 +118,16 @@ function newFees(params, api) {
 
 async function activeContractsMetadata(params, metadata, height) {
     // Metadata from active contracts
-    var sqlQuery = "SELECT CurrentFileSize, RenterValue, HostValue, Fees FROM ContractInfo WHERE Height<=" + height 
+    var sqlQuery = "SELECT CurrentFileSize, ValidProof1Value, ValidProof2Value FROM ContractInfo WHERE Height<=" + height 
         + " AND WindowEnd>" + height
     var contracts = await SqlAsync.Sql(params, sqlQuery)
     metadata.ActiveContractCount = metadata.ActiveContractCount + contracts.length
     for (var i = 0; i < contracts.length; i++) {
         metadata.ActiveContractSize = metadata.ActiveContractSize + BigInt(contracts[i].CurrentFileSize)
-        metadata.ActiveContractCost = metadata.ActiveContractCost + BigInt(contracts[i].RenterValue) 
-            + BigInt(contracts[i].HostValue) + BigInt(contracts[i].Fees)
+        // Contract cost: the outputs value + the SF fees. To deal with bigints, I multiply 1.039 by 1000 and then divide
+        // by 1000 again
+        metadata.ActiveContractCost = metadata.ActiveContractCost + (BigInt(contracts[i].ValidProof1Value) 
+            + BigInt(contracts[i].ValidProof2Value)) * BigInt((1 + params.blockchain.siafundFees) * 1000) / 1000n
     }
     return metadata
 }
