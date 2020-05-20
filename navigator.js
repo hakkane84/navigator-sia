@@ -345,7 +345,16 @@ async function standByForBlocks(sqlHeight) {
                 blocksToRepair.push(i)
             }
             console.log("*** Repairing the blocks segment: " + blocksToRepair[0] + " - " + blocksToRepair[blocksToRepair.length-1])
-
+            
+            // Sequential deletion and re-indexing
+            for (var i = 0; i < blocksToRepair.length; i++) {
+                await Indexer.BlockDeleter(params, blocksToRepair[i])
+                var blockStartTime = Math.floor(Date.now() / 1000)
+                await Indexer.BlockIndexer(params, blocksToRepair[i])
+                var blockEndTime = Math.floor(Date.now() / 1000)
+                console.log("Block " + blocksToRepair[i] + " reindexed in " + (blockEndTime - blockStartTime) + " sec")
+            }
+            
             // Updating the file, or deleting it if these were the last blocks
             repairOrder.blockStart = repairOrder.blockStart + 10
             if (repairOrder.blockStart <= repairOrder.blockEnd) {
@@ -355,15 +364,6 @@ async function standByForBlocks(sqlHeight) {
                 // Delete file
                 fs.unlinkSync("repair.json")
                 console.log("*** This is the last segment of the repair order!")
-            }
-            
-            // Sequential deletion and re-indexing
-            for (var i = 0; i < blocksToRepair.length; i++) {
-                await Indexer.BlockDeleter(params, blocksToRepair[i])
-                var blockStartTime = Math.floor(Date.now() / 1000)
-                await Indexer.BlockIndexer(params, blocksToRepair[i])
-                var blockEndTime = Math.floor(Date.now() / 1000)
-                console.log("Block " + blocksToRepair[i] + " reindexed in " + (blockEndTime - blockStartTime) + " sec")
             }
 
             console.log() // Spacer
