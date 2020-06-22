@@ -148,7 +148,11 @@ exports.SfClaimOutput = async function(params, sqlBatch, senderClaim, senderClai
 
     // Only if the explorer module is available
     if (params.explorerAvailable == true) {
-        var api = await Commons.MegaRouter(params, 0, "/explorer/hashes/" + txHash)
+        
+        // We make this call as a "one try" method (the "true"), as the `/explorer/hashes` API sometimes might fall without any specific reason,
+        // and it is better just going to the failover solution of getting the full block
+        var api = await Commons.MegaRouter(params, 0, "/explorer/hashes/" + txHash, true)
+
         try {
             var outputId = api.transaction.siafundclaimoutputids[0]
         } catch (e) {
