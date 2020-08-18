@@ -949,6 +949,7 @@ exports.Reorgs = async function(params, res, req) {
                 if (sqlReorgs[j].ReorgEventNum == i) {
                     reorgs[reorgs.length-1].timestamp = sqlReorgs[j].DetectionTimestamp
                     reorgs[reorgs.length-1].blocks.push({
+                        height: sqlReorgs[j].Height,
                         hash: sqlReorgs[j].Hash,
                         miningAddress: sqlReorgs[j].MiningAddress,
                         miningPool: sqlReorgs[j].MiningPool,
