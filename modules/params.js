@@ -52,7 +52,8 @@ exports.Params = function(config, scriptPath)
         hashrateEstimationBlocks: 200, // Number of previous blocks used to estimate the network hashrate. The default of 200 is the same used by the Sia Explorer module,
         siafundFees: 0.039,
         totalSiafunds: 10000,
-        dustThreshold: 1000000000000000000000 // Arbitrary. Bellow this threshold, we consider the amount as "dust" and wont compute it for balances of addresses. 1 milliSia by default
+        dustThreshold: 1000000000000000000000, // Arbitrary. Bellow this threshold, we consider the amount as "dust" and wont compute it for balances of addresses. 1 milliSia by default
+        coinPrecision: 1000000000000000000000000 // How many Hastings make a coin
     }
 
     // SQL database connection
