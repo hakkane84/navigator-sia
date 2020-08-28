@@ -401,13 +401,15 @@ async function statusFileFullUpdate(consensusHeight, sqlHeight) {
     // Mempool (unconfirmed transactions)
     var mempoolSize = await Mempool.Index(params)
 
-    // Total transactions indexed
-    var totalTxQuery = SqlComposer.SelectTop(params, "BlockInfo", "TransactionCount", "Height", 1)
-    var totalTx = await SqlAsync.Sql(params, totalTxQuery)
-    if (totalTx.length == 0) {
+    // Total transactions indexed and coin supply
+    var totalTxQuery = SqlComposer.SelectTop(params, "BlockInfo", "TransactionCount, TotalCoins", "Height", 1)
+    var topBlock = await SqlAsync.Sql(params, totalTxQuery)
+    if (topBlock.length == 0) {
         var transactionCount = 0
+        var coinSupply = 0
     } else {
-        var transactionCount = totalTx[0].TransactionCount
+        var transactionCount = topBlock[0].TransactionCount
+        var coinSupply = Math.round(topBlock[0].TotalCoins / params.blockchain.coinPrecision)
     }
     
     // Building and saving array
@@ -415,6 +417,7 @@ async function statusFileFullUpdate(consensusHeight, sqlHeight) {
         "consensusblock": consensusHeight,
         "lastblock": sqlHeight,
         "mempool": mempoolSize,
+        "coinsupply": coinSupply,
         "totalTx": transactionCount,
         "heartbeat": new Date().valueOf(),
         "peers": peersNumber,
