@@ -254,6 +254,12 @@ exports.Restserver = async function(params) {
 
     // Rest of static content
     router.use(express.static(params.websitePath))
+    
+       
+    // Coin supply in a plain number, as per requested by CoinMarketCap
+    router.get('/navigator-api/totalcoins', function(req, res) {
+        ApiFunctions.TotalCoins(params, res, req)
+    });
 
 
     // HTCPCP compliance :-)

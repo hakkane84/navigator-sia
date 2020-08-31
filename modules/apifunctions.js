@@ -966,6 +966,20 @@ exports.Reorgs = async function(params, res, req) {
 }
 
 
+// Coin supply in plain number, as requested by CMC
+exports.TotalCoins = async function(params, res, req) { 
+    var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "TotalCoins", "Height", 1)
+    var topBlock = await SqlAsync.Sql(params, sqlQuery)
+    var coinSupply = Math.round(topBlock[0].TotalCoins / params.blockchain.coinPrecision)
+    if (coinSupply > 0) {
+        res.setHeader("Content-Type", "text/plain")
+        res.status(200).send(coinSupply.toString())
+    } else {
+        // Not available right now
+        res.status(404).send()
+    }
+}
+
 
 // ============================
 // Common methods and functions
