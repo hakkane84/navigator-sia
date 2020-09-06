@@ -74,13 +74,29 @@ exports.Hash = async function(params, res, req) {
         }
 
         // Unconfirmed transactions
-        var sqlQuery = "SELECT ScValue,SfValue,TxType,Timestamp FROM UnconfirmedBalances WHERE Address = '" + hashReq + "'"
+        var sqlQuery = "SELECT ScValue,SfValue,TxType,Timestamp,TxHash FROM UnconfirmedBalances WHERE Address = '" + hashReq + "'"
         var recordsetUnconfirmed = await SqlAsync.Sql(params, sqlQuery)
         var pendingSc = 0
         var pendingSf = 0
+        var dedupUnconfirmed = []
         for (var i = 0; i < recordsetUnconfirmed.length; i++) {
             pendingSc = pendingSc + recordsetUnconfirmed[i].ScValue
             pendingSf = pendingSf + recordsetUnconfirmed[i].SfValue
+            
+            // Merging outputs from the same TxHash in a new array
+            var alreadyIncluded = false
+            for (var j = 0; j < dedupUnconfirmed.length; j++) {
+                if (dedupUnconfirmed[j].TxHash == recordsetUnconfirmed[i].TxHash) {
+                    // Already found, merging:
+                    alreadyIncluded = true
+                    dedupUnconfirmed[j].ScValue = dedupUnconfirmed[j].ScValue + recordsetUnconfirmed[i].ScValue
+                    dedupUnconfirmed[j].SfValue = dedupUnconfirmed[j].SfValue + recordsetUnconfirmed[i].SfValue
+                }
+            }
+            if (alreadyIncluded == false) {
+                // Not a duplicate output, add a new entry in dedupUnconfirmed
+                dedupUnconfirmed.push(recordsetUnconfirmed[i])
+            }
         }
 
         // Add to response
@@ -94,7 +110,7 @@ exports.Hash = async function(params, res, req) {
             "last100Transactions": trimTxs,
             "pendingSc": pendingSc,
             "pendingSf": pendingSf,
-            "unconfirmedTransactions": recordsetUnconfirmed
+            "unconfirmedTransactions": dedupUnconfirmed
         }
         resJson.push(addressResponse)
     
