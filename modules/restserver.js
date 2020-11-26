@@ -266,7 +266,11 @@ exports.Restserver = async function(params) {
     router.route('/navigator-api/coffee').get(function(req, res) {
         res.status(418).send('Sorry, I am a teapot, not a coffe maker')
     });
-
+    
+    // Camthegeek's RichList API
+    router.route('/navigator-api/:v').get(function(req, res) {
+        ApiFunctions.RichList(params, res, req)
+    });
 
     // =============================================
     //                 END OF PATHS
