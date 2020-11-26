@@ -11,6 +11,46 @@ var Commons = require('./commons.js')
 // Functions for API routes
 // ========================
 
+// Cam's richlist function
+exports.RichList = async function(params, res, req){
+    var initialTime = new Date();
+    var sccoinprecision = 1000000000000000000000000
+    // if request url is richlist/sc
+    if (req.params.v == "sc") {
+        var sqlQuery = "SELECT TOP(25) Address as address, sum(BalanceSc) as sc FROM AddressesBalance GROUP BY address ORDER BY sc DESC"
+    }
+    // if request url is richlist/sf
+    if (req.params.v == "sf") {
+        var sqlQuery = "SELECT TOP(25) Address as address, sum(BalanceSf) as sf FROM AddressesBalance GROUP BY address ORDER BY sf DESC"
+    }
+    // Database search
+    var recordSet = await SqlAsync.Sql(params, sqlQuery)
+    var resJson = []
+    for (x = 0; x<recordSet.length; x++) {
+        // probably an easier way to do this, like with .map or something. for now this works - cam
+        if (req.params.v == "sc") {
+            // convert hastings to scp
+            var convertedFunds = recordSet[x].scp/sccoinprecision
+            resJson.push({
+                "address": recordSet[x].address,
+                "scp": convertedFunds
+            });
+        }
+        if (req.params.v == "sf"){
+            resJson.push({
+                "address": recordSet[x].address,
+                "spf": recordSet[x].spf
+            });
+        }
+    }
+    // API response and logging
+    res.send(resJson);
+    if (params.verboseApiLogs == true){
+        timeDelta = new Date() - initialTime
+        console.log("GET: " + req.params.v + " richlist - " + timeDelta + "ms")
+    }
+}
+
 // Search by hash
 exports.Hash = async function(params, res, req) {
     var initialTime = new Date();
