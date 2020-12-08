@@ -474,10 +474,16 @@ exports.proofProcess = function(params, apiblock, n, height, timestamp) {
                     }
                     
                     // Receiver: only the second output (wallet return), as the first are the miner fees
-                    var receiverHash = extraTx.rawtransaction.siacoinoutputs[1].unlockhash
-                    var receiverAmount = parseInt(extraTx.rawtransaction.siacoinoutputs[1].value)
-                    addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
-                    totalTransacted = minerFees + receiverAmount
+                    
+                    // In some exceptional cases (example: block 289641) there is no wallet return, and instead
+                    // the first transaction sends the exact amount required for paying the miner fees, and there is
+                    // no change returning to the sender
+                    if (extraTx.rawtransaction.siacoinoutputs.length > 1) {
+                        var receiverHash = extraTx.rawtransaction.siacoinoutputs[1].unlockhash
+                        var receiverAmount = parseInt(extraTx.rawtransaction.siacoinoutputs[1].value)
+                        addressesImplicated.push({"hash": receiverHash, "sc": receiverAmount})
+                        totalTransacted = minerFees + receiverAmount
+                    }
 
                     // Connected transaction ID as a hash type
                     var toAddHashTypes = "('" + extraHash + "','storageproof','" + masterHash + "')"
