@@ -96,14 +96,16 @@ exports.MetadataBlock = async function(params, api) {
 }
 
 function blockReward(params, height) {
-    // Calculates the block reward
-    var decay = (BigInt(height) * params.blockchain.decayBlockReward)
-    var reward = params.blockchain.initialBlockReward - decay
-    if (reward < params.blockchain.endBlockReward) {
-        reward = params.blockchain.endBlockReward
-    }
+    // Calculates the block reward starting from block 1
+    if (height == 0) { var reward = 0}
+    else {
+    	var decay = (BigInt(height) * params.blockchain.decayBlockReward)
+    	var reward = params.blockchain.initialBlockReward - decay
+    	if (reward < params.blockchain.endBlockReward) {
+       		reward = params.blockchain.endBlockReward
+    }}
     return reward
-    
+
 }
 
 function newFees(params, api) {
