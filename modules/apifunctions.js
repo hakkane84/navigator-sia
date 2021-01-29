@@ -369,7 +369,72 @@ exports.Raw = async function(params, res, req) {
     } else {
         // Explorer call to Sia daemons, response and logging
         var apiSia = await Commons.MegaRouter(params, 0, '/explorer/hashes/' + hash, true)
-        if (apiSia == null) {apiSia = []}
+        if (apiSia == null) {
+            if (hash.length == 64) {
+                // If the explorer is broken, we find in our database the block height and build a pseudo-compatible API
+                // A - Hash type: depending on the object, the next queries will difer
+                var sqlQuery = "SELECT Type,Masterhash FROM HashTypes WHERE Hash = '" +  hash + "'"
+                var recordset = await SqlAsync.Sql(params, sqlQuery)
+                var hashType
+                var targetHeight = 0
+                if (recordset.length != 0) { // Only if something was found in the query
+                    var hashType = recordset[0].Type
+                    var masterHash = recordset[0].Masterhash
+                    if (masterHash == "" || masterHash == null 
+                        || masterHash == "                                                                            ") {
+                        masterHash = hash
+                    }
+                }
+
+                // B - Searching the height on a table that depends on hashtype
+                if (hashType == "ScTx" || hashType == "SfTx" || hashType == "blockreward" || hashType == "allowancePost" 
+                    || hashType == "collateralPost" || hashType == "revision" || hashType == "storageproof" 
+                    || hashType == "contractresol" || hashType == "contract" || hashType == "host ann") {
+
+                    if (hashType == "ScTx" || hashType == "SfTx" || hashType == "blockreward" || hashType == "allowancePost" 
+                    || hashType == "collateralPost") {
+                        var sqlQuery = "SELECT Height FROM TxInfo WHERE TxHash = '" +  masterHash + "'"
+                    } else if (hashType == "revision") {
+                        var sqlQuery = "SELECT Height from RevisionsInfo WHERE MasterHash = '" +  masterHash + "'"
+                    } else if (hashType == "storageproof") {
+                        var sqlQuery = "SELECT Height from StorageProofsInfo WHERE MasterHash = '" +  masterHash + "'"
+                    } else if (hashType == "contractresol"){
+                        var sqlQuery = "SELECT Height from ContractResolutions WHERE MasterHash = '" +  masterHash + "'"
+                    } else if (hashType == "contract") {
+                        var sqlQuery = "SELECT Height from ContractInfo WHERE MasterHash = '" +  masterHash + "' OR ContractId = '" + hash + "'" 
+                    } else if (hashType == "host ann") {
+                        var sqlQuery = "SELECT Height from HostAnnInfo WHERE TxHash = '" +  masterHash + "'"
+                    }
+                    var recordset = await SqlAsync.Sql(params, sqlQuery)
+                    if (recordset.length != 0) {
+                        targetHeight = recordset[0].Height
+                    }
+
+                    // C - Explorer call to Sia daemons from the block hash
+                    var apiSiaBlock = await Commons.MegaRouter(params, 0, '/explorer/blocks/' + targetHeight, true)
+                    if (apiSiaBlock != []) {
+                        // D - Building the pseudo-API
+                        var explorerHashInfo = {}
+                        for (var i = 0; i < apiSiaBlock.block.transactions.length; i++) {
+                            if (apiSiaBlock.block.transactions[i].id == hash) {
+                                explorerHashInfo = apiSiaBlock.block.transactions[i]
+                            }
+                        }
+                        apiSia = {
+                            hashtype: "transactionid",
+                            transaction: explorerHashInfo
+                        }
+                    } else {
+                        apiSia = []
+                    }
+
+                } else {
+                    apiSia = []
+                }
+            } else {
+                apiSia = []
+            }
+        }
         res.send(apiSia)
         if (params.verboseApiLogs == true) {
             timeDelta = new Date() - initialTime
