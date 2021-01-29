@@ -208,7 +208,7 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
             + missedProof1Output + "','" + missedProof1Address + "'," + missedProof1Value + ",'" 
             + missedProof2Output + "','" + missedProof2Address + "'," + missedProof2Value + ",'" 
             + missedProof3Output + "','" + missedProof3Address + "'," + missedProof3Value + "," 
-            + height + "," + timestamp + ",'ongoing'," + renewBool + ")"
+            + height + "," + timestamp + ",'ongoing'," + renewBool + ",0,null" +")"
         newSql.push(SqlComposer.InsertSql(params, "ContractInfo", toAddContractInfo, masterHash))
     }  
 
@@ -667,4 +667,183 @@ exports.contractResolutions = async function(params, height, timestamp) {
     }
 
     return [sqlBatch, addressesImplicated]
+}
+
+
+exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) {
+    // Atomic renewals are a new type of object that merges in the same transaction a revision and a new file contract
+    // In a sort of way, this is a contract + revision Navigator will:
+    // 1- Update the revision number of the extinguished contract
+    // 2- Create a new contract
+
+    var addressesImplicated = []
+    var newSql = []
+    var txsIndexed = []
+    txsIndexed.push(n)
+    var tx = apiblock.transactions[n] // To facilitate the syntax
+
+    // 1 - Updating contract with the revision number, file size and outputs
+    // If the revision number is Max Uint64, this is a "Renew and Clear" Revision style. It doesn't include a MissedOutpu3 (burnt coins)
+    // and will not even have an in-chain storage proof
+    var oldContractId = tx.rawtransaction.filecontractrevisions[0].parentid
+    var newRevision = parseInt(tx.rawtransaction.filecontractrevisions[0].newrevisionnumber)
+    var newFileSize = parseInt(tx.rawtransaction.filecontractrevisions[0].newfilesize)
+    var validProof1Value = tx.rawtransaction.filecontractrevisions[0].newvalidproofoutputs[0].value
+    var validProof1Address = tx.rawtransaction.filecontractrevisions[0].newvalidproofoutputs[0].unlockhash
+    var validProof2Value = tx.rawtransaction.filecontractrevisions[0].newvalidproofoutputs[1].value
+    var validProof2Address = tx.rawtransaction.filecontractrevisions[0].newvalidproofoutputs[1].unlockhash
+    var missedProof1Value = tx.rawtransaction.filecontractrevisions[0].newmissedproofoutputs[0].value
+    var missedProof1Address = tx.rawtransaction.filecontractrevisions[0].newmissedproofoutputs[0].unlockhash
+    var missedProof2Value = tx.rawtransaction.filecontractrevisions[0].newmissedproofoutputs[1].value
+    var missedProof2Address = tx.rawtransaction.filecontractrevisions[0].newmissedproofoutputs[1].unlockhash
+    var missedProof3Value = 0
+    var missedProof3Address = "Unexistent (renew and clear revision)"
+    
+    // In SQL Server, the INT type is 4 bytes instead of 8, so we have to change the revision number to avoid an overflow. We correct this
+    // in the API server to ensure we deliver the actual max uint64
+    if (params.useMsSqlServer == true) {
+        newRevision = 2147483647
+    }
+    var toUpdateContract = "RevisionNum = " + newRevision + ", CurrentFileSize = " + newFileSize + ", ValidProof1Address = '" + validProof1Address
+        + "', ValidProof1Value = " + validProof1Value + ", ValidProof2Address = '" + validProof2Address + "', ValidProof2Value = " + validProof2Value
+        + ", MissedProof1Address = '" + missedProof1Address + "', MissedProof1Value = " + missedProof1Value + ", MissedProof2Address = '" + missedProof2Address 
+        + "', MissedProof2Value = " + missedProof2Value + ", MissedProof3Address = '" + missedProof3Address + "', MissedProof3Value = " + missedProof3Value
+    newSql.push(SqlComposer.InsertSql(params, "ReviseContract", toUpdateContract, oldContractId))
+
+
+    // THE CONTRACT ITSELF:
+    var masterHash = tx.id
+    var minerFees = parseInt(tx.rawtransaction.minerfees[0])
+    var revisionNumber = parseInt(tx.rawtransaction.filecontracts[0].revisionnumber)
+    var windowStart = parseInt(tx.rawtransaction.filecontracts[0].windowstart) // Block that opens the window for submitting the storage proof
+    var windowEnd = parseInt(tx.rawtransaction.filecontracts[0].windowend)
+    var fileSize = parseInt(tx.rawtransaction.filecontracts[0].filesize) // Contract size in current revision
+    var renewBool = 1 // These are always renewals
+    var contractId = tx.filecontractids[0]
+
+
+    if (tx.rawtransaction.siacoininputs.length >= 2) {
+        // This is for conventional contracts of nowadays rules, with two inputs from renter and host
+        // First, we identify the renter and the host transactions, and process them in a separate function
+        var link = []
+        link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
+        link[1] = tx.rawtransaction.siacoininputs[1].parentid // Host TX
+        
+
+        // Finding the matching transactions
+        for (i = 0; i < link.length; i++) { // For both links
+            var matchBool = false
+            for (m = 0; m < apiblock.transactions.length; m++) { // Iterate on each transaction
+                if ( apiblock.transactions[m].siacoinoutputids != null) { // To avoid errors, as some TXs don't have siacoin outputs 
+                    if (link[i] == apiblock.transactions[m].siacoinoutputids[0]) {
+                        matchBool = true // Boolean to mark we found the matching TX
+                        var linkId = ""
+                        if (i == 0) { // Renter TX=
+                            linkId = "allowancePost"  // Renter
+                        } else {
+                            linkId = "collateralPost" // Host
+                        }
+                        txsIndexed.push(m) // Marking TX as indexed
+                        // In top of processing the TX, it saves the addresses used in "the returnArray" to later avoid race conditions saving addresses as hash types
+                        var returnArray = contractPreTx(params, apiblock.transactions[m], height, timestamp, linkId, contractId)
+                        // returnArray contains: 0- a sub-array of addresses, 1- The masterHash of the preTx, 2- The linkId 3- new SQL queries
+                        addressesImplicated = addressesImplicated.concat(returnArray[0])
+                        if (returnArray[2] == "allowancePost") {
+                            var allowancePostingHash = returnArray[1]
+                        } else if (returnArray[2] == "collateralPost") {
+                            var collateralPostingHash = returnArray[1]
+                        }
+                        newSql = newSql.concat(returnArray[3])
+                    }
+                }
+            }
+            if (matchBool == false) {
+                // If a match was not found. This is because there is a small percentage of cases where the 3 transactions are in 2 different blocks
+                // This is because F2pool for a time only included blocks without TX fees, so they will add the renter and host posting, but not the contract, that will go
+                // in the next block. Sometimes one is missing, some others, the two of them
+                // In these cases, as I have to link something for reference, instead of the Hash of those TX, I show the intermediate address: that will link the 2 transactions if a user is browsing
+                // It is probably an imperfect solution, but I consider it is valid for a user
+                
+                if (i == 0) { // Renter TX
+                    var allowancePostingHash = tx.siacoininputoutputs[0].unlockhash
+                } else { // Host TX
+                    var collateralPostingHash = tx.siacoininputoutputs[1].unlockhash
+                }
+            }     
+        } 
+        var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
+        var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
+        var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
+        var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash
+        var totalTransacted = renterAllowanceValue + hostCollateralValue
+
+        // Storage proof possible results:
+        var validProof1Output = tx.rawtransaction.filecontracts[0].validproofoutputs[0].id
+        var validProof1Value = tx.rawtransaction.filecontracts[0].validproofoutputs[0].value
+        var validProof1Address = tx.rawtransaction.filecontracts[0].validproofoutputs[0].unlockhash
+        var validProof2Output = tx.rawtransaction.filecontracts[0].validproofoutputs[1].id
+        var validProof2Value = tx.rawtransaction.filecontracts[0].validproofoutputs[1].value
+        var validProof2Address = tx.rawtransaction.filecontracts[0].validproofoutputs[1].unlockhash
+        var missedProof1Output = tx.rawtransaction.filecontracts[0].missedproofoutputs[0].id
+        var missedProof1Value = tx.rawtransaction.filecontracts[0].missedproofoutputs[0].value
+        var missedProof1Address = tx.rawtransaction.filecontracts[0].missedproofoutputs[0].unlockhash
+        var missedProof2Output = tx.rawtransaction.filecontracts[0].missedproofoutputs[1].id
+        var missedProof2Value = tx.rawtransaction.filecontracts[0].missedproofoutputs[1].value
+        var missedProof2Address = tx.rawtransaction.filecontracts[0].missedproofoutputs[1].unlockhash
+        var missedProof3Output = tx.rawtransaction.filecontracts[0].missedproofoutputs[2].id
+        var missedProof3Value = tx.rawtransaction.filecontracts[0].missedproofoutputs[2].value
+        var missedProof3Address = tx.rawtransaction.filecontracts[0].missedproofoutputs[2].unlockhash
+
+        // Address changes
+        addressesImplicated.push({"hash": renterAllowanceSender, "sc": (renterAllowanceValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
+        addressesImplicated.push({"hash": hostCollateralSender, "sc": (hostCollateralValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
+
+        // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
+        if (tx.siacoinoutputs != null) {
+            for (var i = 0; i < tx.siacoinoutputs.length; i++) {
+                addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+            }
+        }   
+    }
+    
+
+    // TxID and contractID as a hash type (both can be searched as synonyms)
+    var toAddHashTypes = "('" + masterHash + "','contract','" + masterHash + "')"
+    newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, masterHash))
+    var toAddHashTypes2 = "('" + contractId + "','contract','" + masterHash + "')"
+    newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes2, contractId))
+ 
+    // Tx inside a block
+    var toAddBlockTransactions = "(" + height + ",'" + masterHash + "','contract'," + totalTransacted + ",0)"
+    newSql.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, masterHash))
+ 
+    // Contract info
+    if (windowStart > 2100000000 || windowEnd > 2100000000) {
+        // A few contracts in the past where set with an expiration date height of 18446744073709538800. This is wrong, and will overflow
+        // `int` limits of the database. We avoid indexing them
+        //console.log("*** Ignoring the contract " + masterHash + " set to expire in billions of blocks into the future")
+    } else {
+        var toAddContractInfo = "('" + masterHash + "','" + contractId + "','" + allowancePostingHash + "'," + renterAllowanceValue + ",'" 
+            + collateralPostingHash + "'," + hostCollateralValue + "," + minerFees + "," + windowStart + "," + windowEnd + "," 
+            + revisionNumber + "," + fileSize + "," + fileSize + ",'"
+            + validProof1Output + "','" + validProof1Address + "'," + validProof1Value + ",'"
+            + validProof2Output + "','" + validProof2Address + "'," + validProof2Value + ",'" 
+            + missedProof1Output + "','" + missedProof1Address + "'," + missedProof1Value + ",'" 
+            + missedProof2Output + "','" + missedProof2Address + "'," + missedProof2Value + ",'" 
+            + missedProof3Output + "','" + missedProof3Address + "'," + missedProof3Value + "," 
+            + height + "," + timestamp + ",'ongoing'," + renewBool + ",1,'" + oldContractId + "')"
+        newSql.push(SqlComposer.InsertSql(params, "ContractInfo", toAddContractInfo, masterHash))
+    }  
+
+    // Adding extra info to the addresses changes
+    for (var i = 0; i < addressesImplicated.length; i++) {
+        addressesImplicated[i].sf = 0
+    }
+    
+    // I return both the newSql queries and the addressesImplicated
+    var returnArray = [
+        newSql,
+        txsIndexed, 
+        addressesImplicated]
+    return returnArray
 }
