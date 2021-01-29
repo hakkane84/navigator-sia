@@ -1605,6 +1605,20 @@ function openTab(evt, cityName) {
                             + '</td><td>'
                                 + '<span style="vertical-align:center; font-size: medium">' + renewWord + '</span>'
                         + '</td></tr>'
+		    
+		    if (data[1].AtomicRenewal == true) {
+                        var prevContractLink = htmlPath + "?search=" + data[1].RenewsContractId
+                        tableCode = tableCode
+                            + '<tr><td>'
+                                    + '<span style="vertical-align:center"><font size="3">Renewed the Contract ID:</font></span>'
+                                + '</td>'
+                                + '<td>'
+                                    + '<span  style="vertical-align:center; font-size: 11px"><a href=' + prevContractLink + '>' 
+                                    +  data[1].RenewsContractId + '</span>'
+                            + '</td></tr>'
+                    }
+
+                    tableCode = tableCode
                         + '<tr><td>'
                                 + '<span style="vertical-align:center"><font size="3">File size at contract formation:</font></span>'
                             + '</td><td>'
@@ -1625,6 +1639,18 @@ function openTab(evt, cityName) {
                             + '</td><td>'
                                 + '<span style="vertical-align:center; font-size: medium">' + data[1].WindowStart + " - " + data[1].WindowEnd + '</span>'
                         + '</td></tr>'
+		    
+		    if (data[6].Height >= 0) {
+                        var renewLink = htmlPath + "?search=" + data[6].ContractId
+                        tableCode = tableCode
+                            + '<tr><td>'
+                                    + '<span style="vertical-align:center"><font size="3">Renewed into Contract ID:</font></span>'
+                                + '</td>'
+                                + '<td>'
+                                    + '<span  style="vertical-align:center; font-size: 11px"><a href=' + renewLink + '>' 
+                                    + data[6].ContractId + '</span>'
+                            + '</td></tr>'
+                    }
             } else if (data[0].Type == "revision") {
                     var tableCode = tableCode
                         + '<tr><td>'
@@ -1795,6 +1821,21 @@ function openTab(evt, cityName) {
                         + '</td>'
                         + '<td style="font-size:small; border-right: 0px">' + timeConverter(data[4].Timestamp) + '</td>'
                     + '</tr>'
+            }
+	    if (data[6].Height >= 0) { // Only if there is an atomic renewal
+	    tableCode = tableCode
+	        + '<tr style="height: 50px">'
+		    + '<td style="border-right: 0px">'
+		        + '<svg style="width: 30px; height: 30px"><use xlink:href="#contract-text" class="icon-text"/></svg>'
+		    + '<td style="padding: 0px 0px 0px 10px; border-right: 0px; font-size:medium"><a href=' + htmlPath + '?search=' + data[6].ContractId + '> Contract renewal </a></td>'
+		    + '</td>'
+		    + '<td style="font-size:x-small; border-right: 0px"><a href=' + htmlPath + '?search=' + data[6].ContractId + '>'
+		    + shortHash(data[6].ContractId) + '</a></td>'
+		    + '<td style="border-right: 0px"><a href=' + htmlPath + '?search=' + data[6].Height + '>'
+		        + '<span style="vertical-align:center; font-size:small">Block: ' + data[6].Height + '</span></a>'
+		    + '</td>'
+		    + '<td style="font-size:small; border-right: 0px">' + timeConverter(data[6].Timestamp) + '</td>'
+	        + '</tr>'
             }
             if (data[3].Height >= 0) { // Only if there is a Resolution
                 tableCode = tableCode
