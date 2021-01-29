@@ -248,6 +248,15 @@ exports.Hash = async function(params, res, req) {
             } else {
                 resJson.push({transactions: []})
             }
+            
+            // F6 - Next search: Atomic renewals. Novelty in 2021
+            var sqlQuery = "SELECT * FROM ContractInfo WHERE RenewsContractId = '" + contractId + "'"
+            var recordset = await SqlAsync.Sql(params, sqlQuery)
+            if (recordset.length != 0) {
+                resJson.push(recordset[0])
+            } else {
+                resJson.push({})
+            }
         }
 
     // REVISIONS, RESOLUTIONS AND STORAGE PROOFS
