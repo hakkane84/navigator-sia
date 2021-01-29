@@ -309,14 +309,17 @@ async function createNavigatorTables(params) {
         + "Height int, "
         + "Timestamp bigint, "
         + "Status varchar(15), "
-        + "Renew bit"
+        + "Renew bit, "
+        + "AtomicRenewal bit, "
+        + "RenewsContractId char(64)"
         + ")"
     sqlQueries[8] = "CREATE INDEX IX_ContractInfo ON ContractInfo (Height)"
     sqlQueries[9] = "CREATE INDEX IX_ContractInfo_1 ON ContractInfo (ContractId)"
     sqlQueries[10] = "CREATE INDEX IX_ContractInfo_2 ON ContractInfo (WindowEnd)"
+    sqlQueries[11] = "CREATE INDEX IX_ContractInfo_3 ON ContractInfo (RenewsContractId)"
     
     // ContractResolutions
-    sqlQueries[11] = "CREATE TABLE ContractResolutions ("
+    sqlQueries[12] = "CREATE TABLE ContractResolutions ("
         + "MasterHash char(64) PRIMARY KEY, "
         + "ContractId char(64), "
         + "Fees numeric(36, 0), "
@@ -330,18 +333,18 @@ async function createNavigatorTables(params) {
         + "Output2Address char(76), "
         + "Output2Value numeric(36, 0)"
         + ")"
-    sqlQueries[12] = "CREATE INDEX IX_ContractResolutions ON ContractResolutions (Height)"
-    sqlQueries[13] = "CREATE INDEX IX_ContractResolutions_1 ON ContractResolutions (ContractId)"
+    sqlQueries[13] = "CREATE INDEX IX_ContractResolutions ON ContractResolutions (Height)"
+    sqlQueries[14] = "CREATE INDEX IX_ContractResolutions_1 ON ContractResolutions (ContractId)"
 
     // HashTypes
-    sqlQueries[14] = "CREATE TABLE HashTypes ("
+    sqlQueries[15] = "CREATE TABLE HashTypes ("
         + "Hash varchar(76) PRIMARY KEY, "
         + "Type varchar(15), "
         + "Masterhash char(76)"
         + ")"
 
     // HostAnnInfo
-    sqlQueries[15] = "CREATE TABLE HostAnnInfo ("
+    sqlQueries[16] = "CREATE TABLE HostAnnInfo ("
         + "TxHash char(64) PRIMARY KEY, "
         + "HashSynonyms varchar(max), "
         + "Height int, "
@@ -349,10 +352,10 @@ async function createNavigatorTables(params) {
         + "Fees numeric(36, 0), "
         + "IP varchar(max)"
         + ")"
-    sqlQueries[16] = "CREATE INDEX IX_HostAnnInfo ON HostAnnInfo (Height)"
+    sqlQueries[17] = "CREATE INDEX IX_HostAnnInfo ON HostAnnInfo (Height)"
 
     // RevisionsInfo
-    sqlQueries[17] = "CREATE TABLE RevisionsInfo ("
+    sqlQueries[18] = "CREATE TABLE RevisionsInfo ("
         + "MasterHash char(64) PRIMARY KEY, "
         + "ContractId char(64), "
         + "Fees numeric(36, 0), "
@@ -372,21 +375,21 @@ async function createNavigatorTables(params) {
         + "Timestamp bigint, "
         + "HashSynonyms varchar(max)"
         + ")"
-    sqlQueries[18] = "CREATE INDEX IX_RevisionsInfo ON RevisionsInfo (Height)"
-    sqlQueries[19] = "CREATE INDEX IX_RevisionsInfo_1 ON RevisionsInfo (ContractId)"
+    sqlQueries[19] = "CREATE INDEX IX_RevisionsInfo ON RevisionsInfo (Height)"
+    sqlQueries[20] = "CREATE INDEX IX_RevisionsInfo_1 ON RevisionsInfo (ContractId)"
 
     // TxInfo
-    sqlQueries[20] = "CREATE TABLE TxInfo ("
+    sqlQueries[21] = "CREATE TABLE TxInfo ("
         + "TxHash char(64) PRIMARY KEY, "
         + "HashSynonyms varchar(max), "
         + "Height int, "
         + "Timestamp bigint, "
         + "Fees numeric(36, 0)"
         + ")"
-    sqlQueries[21] = "CREATE INDEX IX_TxInfo ON TxInfo (Height)"
+    sqlQueries[22] = "CREATE INDEX IX_TxInfo ON TxInfo (Height)"
 
     // Outputs
-    sqlQueries[22] = "CREATE TABLE Outputs ("
+    sqlQueries[23] = "CREATE TABLE Outputs ("
         + "OutputId char(64) PRIMARY KEY, "
         + "ScValue numeric(36, 0), "
         + "SfValue smallint, "
@@ -395,21 +398,21 @@ async function createNavigatorTables(params) {
         + "Spent bit, "
         + "SpentOnBlock int"
         + ")"
-    sqlQueries[23] = "CREATE INDEX IX_Outputs ON Outputs (Address)"
-    sqlQueries[24] = "CREATE INDEX IX_Outputs_1 ON Outputs (CreatedOnBlock)"
-    sqlQueries[25] = "CREATE INDEX IX_Outputs_2 ON Outputs (SpentOnBlock)"
+    sqlQueries[24] = "CREATE INDEX IX_Outputs ON Outputs (Address)"
+    sqlQueries[25] = "CREATE INDEX IX_Outputs_1 ON Outputs (CreatedOnBlock)"
+    sqlQueries[26] = "CREATE INDEX IX_Outputs_2 ON Outputs (SpentOnBlock)"
 
     // AddressesBalance
-    sqlQueries[26] = "CREATE TABLE AddressesBalance ("
+    sqlQueries[27] = "CREATE TABLE AddressesBalance ("
         + "Address char(76) PRIMARY KEY, "
         + "BalanceSc numeric(36, 0), "
         + "BalanceSf smallint"
         + ")"
-    sqlQueries[27] = "CREATE INDEX IX_AddressesBalance ON AddressesBalance (BalanceSc)"
-    sqlQueries[28] = "CREATE INDEX IX_AddressesBalance_1 ON AddressesBalance (BalanceSf)"
+    sqlQueries[28] = "CREATE INDEX IX_AddressesBalance ON AddressesBalance (BalanceSc)"
+    sqlQueries[29] = "CREATE INDEX IX_AddressesBalance_1 ON AddressesBalance (BalanceSf)"
     
     // Reorgs
-    sqlQueries[29] = "CREATE TABLE Reorgs ("
+    sqlQueries[30] = "CREATE TABLE Reorgs ("
         + "Hash char(64), "
         + "MiningPool varchar(15), "
         + "MiningAddress char(76), "
@@ -420,10 +423,10 @@ async function createNavigatorTables(params) {
         + "ReplacingMiningPool varchar(15), "
         + "ReplacingMiningAddress char(76)"
         + ")"
-    sqlQueries[30] = "CREATE INDEX IX_Reorgs ON Reorgs (ReorgEventNum)"
+    sqlQueries[31] = "CREATE INDEX IX_Reorgs ON Reorgs (ReorgEventNum)"
 
     // UnconfirmedBalances
-    sqlQueries[31] = "CREATE TABLE UnconfirmedBalances ("
+    sqlQueries[32] = "CREATE TABLE UnconfirmedBalances ("
         + "Address char(76), "
         + "TxHash char(64), "
         + "Timestamp bigint, "
@@ -431,11 +434,11 @@ async function createNavigatorTables(params) {
         + "SfValue smallint, "
         + "TxType varchar(15)"
         + ")"
-    sqlQueries[32] = "CREATE INDEX IX_UnconfirmedBalances ON UnconfirmedBalances (Address)"
-    sqlQueries[33] = "CREATE INDEX IX_UnconfirmedBalances_1 ON UnconfirmedBalances (TxHash)"
+    sqlQueries[33] = "CREATE INDEX IX_UnconfirmedBalances ON UnconfirmedBalances (Address)"
+    sqlQueries[34] = "CREATE INDEX IX_UnconfirmedBalances_1 ON UnconfirmedBalances (TxHash)"
 
     // StorageProofsInfo
-    sqlQueries[34] = "CREATE TABLE StorageProofsInfo ("
+    sqlQueries[35] = "CREATE TABLE StorageProofsInfo ("
         + "MasterHash char(64) PRIMARY KEY, "
         + "ContractId char(64), "
         + "HashSynonyms varchar(max), "
@@ -443,8 +446,8 @@ async function createNavigatorTables(params) {
         + "Timestamp bigint, "
         + "Fees numeric(36, 0)"
         + ")"
-    sqlQueries[35] = "CREATE INDEX IX_StorageProofsInfo ON StorageProofsInfo (Height)"
-    sqlQueries[36] = "CREATE INDEX IX_StorageProofsInfo_1 ON StorageProofsInfo (ContractId)"
+    sqlQueries[36] = "CREATE INDEX IX_StorageProofsInfo ON StorageProofsInfo (Height)"
+    sqlQueries[37] = "CREATE INDEX IX_StorageProofsInfo_1 ON StorageProofsInfo (ContractId)"
 
 
     // Loop for creating the tables
