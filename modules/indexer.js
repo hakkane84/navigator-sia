@@ -79,8 +79,16 @@ exports.BlockIndexer = async function(params, block) {
                 addressesImplicated = addressesImplicated.concat(returnArray[2])
             }
 
-            // D4 - File contracts
-            if (api.transactions[i].filecontracts.length != 0) {
+            /// D4.1 - File contract atomic renewals
+            if (api.transactions[i].filecontracts.length != 0 && api.transactions[i].filecontractrevisions.length != 0) {
+                var returnArray = await FileContracts.atomicRenewalProcess(params, api, i, height, timestamp)
+                sqlBatch = sqlBatch.concat(returnArray[0])
+                txsIndexed = txsIndexed.concat(returnArray[1])
+                addressesImplicated = addressesImplicated.concat(returnArray[2])
+            }
+
+            // D4.2 - File contracts
+            if (api.transactions[i].filecontracts.length != 0 && api.transactions[i].filecontractrevisions.length == 0) {
                 var returnArray = await FileContracts.fileContractsProcess(params, api, i, height, timestamp)
                 sqlBatch = sqlBatch.concat(returnArray[0])
                 txsIndexed = txsIndexed.concat(returnArray[1])
@@ -88,7 +96,7 @@ exports.BlockIndexer = async function(params, block) {
             }
 
             // D5 - Contract revisions
-            if (api.transactions[i].filecontractrevisions.length != 0) {
+            if (api.transactions[i].filecontractrevisions.length != 0 && api.transactions[i].filecontracts.length == 0) {
                 var returnArray = await FileContracts.revisionProcess(params, api, i, height, timestamp)
                 sqlBatch = sqlBatch.concat(returnArray[0])
                 txsIndexed = txsIndexed.concat(returnArray[1])

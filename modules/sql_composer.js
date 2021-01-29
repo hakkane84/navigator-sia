@@ -58,7 +58,7 @@ exports.InsertSql= function(params, table, toAdd, toCheck) {
             + "') INSERT INTO ContractInfo (MasterHash,ContractId,AllowancePosting,RenterValue,CollateralPosting,HostValue,Fees,WindowStart,WindowEnd," 
             + "RevisionNum,OriginalFileSize,CurrentFileSize,ValidProof1Output,ValidProof1Address,ValidProof1Value,ValidProof2Output,ValidProof2Address,ValidProof2Value," 
             + "MissedProof1Output,MissedProof1Address,MissedProof1Value,MissedProof2Output,MissedProof2Address,MissedProof2Value,"
-            + "MissedProof3Output,MissedProof3Address,MissedProof3Value,Height,Timestamp,Status,Renew)" 
+            + "MissedProof3Output,MissedProof3Address,MissedProof3Value,Height,Timestamp,Status,Renew,AtomicRenewal,RenewsContractId)"  
             + " VALUES " + toAdd
 
     } else if (table == "RevisionsInfo") {
