@@ -58,9 +58,9 @@ exports.Params = function(config, scriptPath)
         foundationInitialSubsidy: BigInt(1576800000000000000000000000000000),
         foundationSubsidy: BigInt(129600000000000000000000000000000),
         foundationSubsidyPeriodicity: 4320,
-        foundationInitialAddress = "053b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807",
-        foundationInitialFailsafeAddress = "27c22a6c6e6645802a3b8fa0e5374657438ef12716d2205d3e866272de1b644dbabd53d6d560",
-        foundationSpecifier = "foundation" // String used to hash the OutputID of Foundation subsidies
+        foundationInitialAddress: "053b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807",
+        foundationInitialFailsafeAddress: "27c22a6c6e6645802a3b8fa0e5374657438ef12716d2205d3e866272de1b644dbabd53d6d560",
+        foundationSpecifier: "foundation" // String used to hash the OutputID of Foundation subsidies
     }
 
     // SQL database connection
