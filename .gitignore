@@ -1,1 +1,8 @@
 node_modules
+navigator.db
+navigator.db-journal
+web/nav_assets/navigator_styles.css
+.gitignore
+web/nav_assets/navigator_web.js
+status.json
+landingpagedata.json
