@@ -56,8 +56,8 @@ exports.Params = function(config, scriptPath)
         coinPrecision: 1000000000000000000000000, // How many Hastings make a coin
         foundationForkHeight: 298000,
         foundationInitialSubsidy: BigInt(1576800000000000000000000000000000),
-        foundationSubsidy: BigInt(129600000000000000000000000000000),
-        foundationSubsidyPeriodicity: 4320,
+        foundationSubsidy: BigInt(131400000000000000000000000000000),
+        foundationSubsidyPeriodicity: 4380,
         foundationSpecifier: "foundation" // String used to hash the OutputID of Foundation subsidies
     }
 
