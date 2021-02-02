@@ -3,9 +3,7 @@ var exports = module.exports={}
 var blake = require('blakejs')
 
 
-
-
-function calculateOutputIdSubsidy(blockHash, specifier) {
+exports.CalculateOutputIdSubsidy = async function(blockHash, specifier) {
 	// This function takes the hash of a block together with the specifier of the Sia Foundation and calculates
 	// with it the OutputID of a Foundation subsidy. It reproduces what the Sia code does in Golang
 	// This function is a courtesy of Nate Maninger, from https://SiaCentral.com, whom I am extremely grateful with for his help

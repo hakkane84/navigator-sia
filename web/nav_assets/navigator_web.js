@@ -964,10 +964,18 @@ function openTab(evt, cityName) {
                 var sizeInBox = 4
                 var subsidy =  300000 - data[1].Height
                 if (subsidy < 30000) {subsidy = 30000} // Minimal future subsidy
-                subsidyReadable = readable(subsidy * 1000000000000000000000000) + " SC"
+                subsidy = subsidy * 1000000000000000000000000
+
+                // Adding Foundation subsidy to coinbase, if exists
+                var foundationSubsidy = 0
+                if (data[2].transactions.length == 2) {
+                    foundationSubsidy = data[2].transactions[1].ScChange
+                }
+
+                subsidyReadable = readable(subsidy + foundationSubsidy) + " SC"
                 addSimpleSenderBox(objectInBox, subsidyReadable, colorInBox, iconInBox, linkInBox, sizeInBox)
                 
-                var minedFees = readable(data[2].transactions[0].ScChange - (subsidy * 1000000000000000000000000)) + " SC"
+                var minedFees = readable(data[2].transactions[0].ScChange - subsidy) + " SC"
                 var objectInBox = "Collected transaction fees"
                 addSimpleSenderBox(objectInBox, minedFees, colorInBox, iconInBox, linkInBox, sizeInBox)
             }
@@ -1008,7 +1016,8 @@ function openTab(evt, cityName) {
                         else if (data[0].Type == "collateralPost" && data[2].transactions[n].TxType != "contractform") {var objectInBox = "Host address"}
                         else if (data[0].Type == "collateralPost" && data[2].transactions[n].TxType == "contractform") {var objectInBox = "Collateral for Contract ID"}
                         else if (data[0].Type == "storageproof") {var objectInBox = "Host address"}
-                        else if (data[0].Type == "blockreward") {var objectInBox = "Miner payout address"}
+                        else if (data[0].Type == "blockreward" && data[2].transactions[n].TxType == "blockreward") {var objectInBox = "Miner payout address"}
+                        else if (data[0].Type == "blockreward" && data[2].transactions[n].TxType == "foundationsub") {var objectInBox = "Sia Foundation address"}
                         else if (data[0].Type == "revision") {var objectInBox = "Address (same wallet)"}
 
                         // Color
@@ -1023,7 +1032,8 @@ function openTab(evt, cityName) {
                         else if (data[0].Type == "collateralPost" && data[2].transactions[n].TxType != "contractform") {iconInBox = "host"}
                         else if (data[0].Type == "collateralPost" && data[2].transactions[n].TxType == "contractform") {iconInBox = "contract"}
                         else if (data[0].Type == "storageproof") {iconInBox = "host"}
-                        else if (data[0].Type == "blockreward") {iconInBox = "miner"}
+                        else if (data[0].Type == "blockreward" && data[2].transactions[n].TxType == "blockreward") {iconInBox = "miner"}
+                        else if (data[0].Type == "blockreward" && data[2].transactions[n].TxType == "foundationsub") {iconInBox = "network"}
 
                         // Pushing the Box to the Scheme
                         addRowReceiver(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, firstReceiverBool, colorInBox)
@@ -2476,6 +2486,9 @@ function openTab(evt, cityName) {
             var icon = "sfclaim"
         } else if (txType == "blockreward") {
             var type = "Block reward"
+            var icon = "miner"
+        } else if (txType == "foundationsub") {
+            var type = "Foundation subsidy"
             var icon = "miner"
         } else if (txType == "storageproof") {
             var type = "Storage proof"

@@ -130,6 +130,12 @@ exports.CreateOutput = function(params, table, outputId, value, address, block) 
         + " END ELSE BEGIN"
         + " UPDATE Outputs SET ScValue = " + value + ", Address = '" + address  + "', CreatedOnBlock = " + block + " WHERE OutputId ='" + outputId + "' END"
     
+    } else if (table == "Outputs-SC-FoundationUnlciamed") {
+        var sqlQuery = "IF (NOT EXISTS(SELECT * FROM Outputs WHERE OutputId='" + outputId + "'))"
+        + " BEGIN INSERT INTO Outputs (OutputId,ScValue,Address,CreatedOnBlock,FoundationUnclaimed) VALUES ('" + outputId + "'," + value + ",'" + address + "'," + block + ",1)"
+        + " END ELSE BEGIN"
+        + " UPDATE Outputs SET ScValue = " + value + ", Address = '" + address  + "', CreatedOnBlock = " + block + ", FoundationUnclaimed = 1 " + " WHERE OutputId ='" + outputId + "' END"
+    
     } else if (table == "Outputs-SF") {
         var sqlQuery = "IF (NOT EXISTS(SELECT * FROM Outputs WHERE OutputId='" + outputId + "'))"
         + " BEGIN INSERT INTO Outputs (OutputId,SfValue,Address,CreatedOnBlock) VALUES ('" + outputId + "'," + value + ",'" + address + "'," + block + ")"
