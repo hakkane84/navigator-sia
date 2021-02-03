@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/hakkane84/navigator-sia#readme",
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "babel-runtime": "^6.26.0",
     "blakejs": "^1.1.0",
     "body-parser": "^1.19.0",
