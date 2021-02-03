@@ -35,7 +35,7 @@ exports.MetadataBlock = async function(params, api) {
         Difficulty: parseInt(api.difficulty),
         Hashrate: 0,
         TransactionCount: parseInt(prevBlock.TransactionCount),
-        TotalCoins: BigInt(prevBlock.TotalCoins) + blockReward(params, api.height),
+        TotalCoins: BigInt(prevBlock.TotalCoins) + blockReward(params, api.height) + foundationSubsidies(params, api.height),
         SiacoinInputCount: parseInt(prevBlock.SiacoinInputCount),
         SiacoinOutputCount: parseInt(prevBlock.SiacoinOutputCount),
         FileContractRevisionCount: parseInt(prevBlock.FileContractRevisionCount),
@@ -96,14 +96,33 @@ exports.MetadataBlock = async function(params, api) {
 }
 
 function blockReward(params, height) {
-    // Calculates the block reward
+    // Calculates the block reward - Mined coins
     var decay = (BigInt(height) * params.blockchain.decayBlockReward)
     var reward = params.blockchain.initialBlockReward - decay
     if (reward < params.blockchain.endBlockReward) {
         reward = params.blockchain.endBlockReward
     }
+
+    return reward   
+}
+
+function foundationSubsidies(params, height) {
+    // Calculates the foundation subsidies
+    var reward = BigInt(0)
+
+    // Initial Foundation subsidy
+    if (height == params.blockchain.foundationForkHeight) {
+        reward = reward + params.blockchain.foundationInitialSubsidy
+    }
+
+    // Monthly Foundation subsidy
+    if (height > params.blockchain.foundationForkHeight) {
+        if ((height - params.blockchain.foundationForkHeight) % params.blockchain.foundationSubsidyPeriodicity == 0) {
+            reward = reward + params.blockchain.foundationSubsidy
+        }
+    }
+
     return reward
-    
 }
 
 function newFees(params, api) {

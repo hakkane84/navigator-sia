@@ -396,7 +396,8 @@ async function createNavigatorTables(params) {
         + "Address char(76), "
         + "CreatedOnBlock int, "
         + "Spent bit, "
-        + "SpentOnBlock int"
+        + "SpentOnBlock int ,"
+        + "FoundationUnclaimed bit"
         + ")"
     sqlQueries[24] = "CREATE INDEX IX_Outputs ON Outputs (Address)"
     sqlQueries[25] = "CREATE INDEX IX_Outputs_1 ON Outputs (CreatedOnBlock)"
@@ -449,6 +450,19 @@ async function createNavigatorTables(params) {
     sqlQueries[36] = "CREATE INDEX IX_StorageProofsInfo ON StorageProofsInfo (Height)"
     sqlQueries[37] = "CREATE INDEX IX_StorageProofsInfo_1 ON StorageProofsInfo (ContractId)"
 
+    // Table for the changes on the main and failover Sia Foundation addresses where the subisdies are deposited
+    sqlQueries[38] =  "CREATE TABLE FoundationAddressesChanges ("
+        + "Height int PRIMARY KEY, "
+        + "FoundationAddress char(76), "
+        + "FailoverAddress char(76)"
+        + ")"
+
+    // Populating the initial entry on FoundationAddressesChanges with values from the Sia API
+    var api = await Commons.MegaRouter(params, 0, '/consensus')
+    var foundationAddress = api.foundationprimaryunlockhash
+    var failoverAddress = api.foundationfailsafeunlockhash
+    sqlQueries[39] = "INSERT INTO FoundationAddressesChanges (Height,FoundationAddress,FailoverAddress) VALUES "
+        + "(0,'" + foundationAddress + "','" + failoverAddress + "')"
 
     // Loop for creating the tables
     for (var i = 0; i < sqlQueries.length; i++) {

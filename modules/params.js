@@ -53,7 +53,12 @@ exports.Params = function(config, scriptPath)
         siafundFees: 0.039,
         totalSiafunds: 10000,
         dustThreshold: 1000000000000000000000, // Arbitrary. Bellow this threshold, we consider the amount as "dust" and wont compute it for balances of addresses. 1 milliSia by default
-        coinPrecision: 1000000000000000000000000 // How many Hastings make a coin
+        coinPrecision: 1000000000000000000000000, // How many Hastings make a coin
+        foundationForkHeight: 298000,
+        foundationInitialSubsidy: BigInt(1576800000000000000000000000000000),
+        foundationSubsidy: BigInt(131400000000000000000000000000000),
+        foundationSubsidyPeriodicity: 4380,
+        foundationSpecifier: "foundation" // String used to hash the OutputID of Foundation subsidies
     }
 
     // SQL database connection

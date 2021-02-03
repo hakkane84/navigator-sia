@@ -14,6 +14,7 @@ var ParentFinder = require("./parentfinder.js")
 var Metadata = require("./metadata.js")
 var SqlAsync = require('./sql_async.js')
 var SqlComposer = require("./sql_composer.js")
+var Foundation = require("./foundation.js")
 
 exports.BlockIndexer = async function(params, block) {
     // B - /consensus/blocks call to the megarouter
@@ -197,6 +198,7 @@ async function minerPayoutProcessor(params, sqlBatch, addressesImplicated, heigh
     // database. Instead, I create an artificial TxID where I replace the first two characters of the block hash by
     // a "BR" (block reward)
     var minerPayoutTxId = "BR" + api.id.slice(2)
+    var blockRewardCoins = BigInt(api.minerpayouts[0].value)
     
     // Address change. Add it to the Addresses Implicated array
     addressesImplicated.push({
@@ -207,12 +209,58 @@ async function minerPayoutProcessor(params, sqlBatch, addressesImplicated, heigh
         txType: 'blockreward'
     })
 
+    // Sia Foundation subsidies
+    var subsidyBool = false
+    // Initial Foundation subsidy
+    if (height == params.blockchain.foundationForkHeight) {
+        var subsidyAmount = params.blockchain.foundationInitialSubsidy
+        subsidyBool = true
+    }
+    // Monthly Foundation subsidy
+    if (height > params.blockchain.foundationForkHeight) {
+        if ((height - params.blockchain.foundationForkHeight) % params.blockchain.foundationSubsidyPeriodicity == 0) {
+            var subsidyAmount = params.blockchain.foundationSubsidy
+            subsidyBool = true
+        }
+    }
+
+    // Processing SQL entries for the Foundation
+    if (subsidyBool == true) {
+        blockRewardCoins = blockRewardCoins + subsidyAmount
+
+        // Getting the current Foundation main address from database
+        var sqlQuery = "SELECT Height, FoundationAddress FROM FoundationAddressesChanges WHERE Height <= " + height + " ORDER BY Height ASC"
+        var addressesList = await SqlAsync.Sql(params, sqlQuery)
+        var currentFoundationAddress = addressesList[addressesList.length-1].FoundationAddress
+
+        // Calculating the output ID
+        var foundationOutputId = await Foundation.CalculateOutputIdSubsidy(api.id, params.blockchain.foundationSpecifier)
+
+        // Address Change. The txType is "foundationSub"
+        addressesImplicated.push({
+            hash: currentFoundationAddress, 
+            masterHash: minerPayoutTxId,
+            sc: subsidyAmount,
+            sf: 0,
+            txType: 'foundationsub'
+        })
+        
+        // Output as a hash type
+        var toAddHashTypes = "('" + foundationOutputId + "','output','')"
+        sqlBatch.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, foundationOutputId))
+
+        // Adding the output info to the Batch
+        var sqlQuery = SqlComposer.CreateOutput(
+            params, "Outputs-SC-FoundationUnlciamed", foundationOutputId, subsidyAmount, currentFoundationAddress, height)
+        sqlBatch.push(sqlQuery)
+    }
+
     // Tx info
     var toAddTxInfo = "('" + minerPayoutTxId + "',''," + height + "," + timestamp + ",null)"
     sqlBatch.push(SqlComposer.InsertSql(params, "TxInfo", toAddTxInfo, minerPayoutTxId))
 
     // Saving TX as a component of a block
-    var toAddBlockTransactions = "(" + height + ",'" + minerPayoutTxId + "','blockreward'," + parseInt(api.minerpayouts[0].value) + ",0)"
+    var toAddBlockTransactions = "(" + height + ",'" + minerPayoutTxId + "','blockreward'," + blockRewardCoins + ",0)"
     sqlBatch.push(SqlComposer.InsertSql(params, "BlockTransactions", toAddBlockTransactions, minerPayoutTxId))
 
     // Miner payout as hash type
