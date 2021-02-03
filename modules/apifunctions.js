@@ -67,7 +67,12 @@ exports.Hash = async function(params, res, req) {
         txs.sort(function(a,b) {
             return parseFloat(b.Height) - parseFloat(a.Height)
         })
-        var firstSeen = txs[txs.length-1].Height
+        try {
+            var firstSeen = txs[txs.length-1].Height
+        } catch (e) {
+            var firstSeen = ""
+        }
+        
         var trimTxs = []
         for (var m = 0; m < 100 && m < txCount; m++) {
             trimTxs.push(txs[m])

@@ -2,8 +2,8 @@
 var exports = module.exports={}
 var blake = require('blakejs')
 
-var SqlAsync = require('./modules/sql_async.js')
-var SqlComposer = require("./modules/sql_composer.js")
+var SqlAsync = require('./sql_async.js')
+var SqlComposer = require("./sql_composer.js")
 var Commons = require('./commons.js')
 
 
@@ -55,7 +55,9 @@ exports.CheckCurrentFoundationAddresses = async function(params) {
 
 	// Current addresses from the Sia API
 	var api = await Commons.MegaRouter(params, 0, '/consensus')
-    var currentFoundationAddress = api.foundationprimaryunlockhash
+	////////////////////////////////////////////////////////////////////////////////
+	var currentFoundationAddress = `b53b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807`
+    //var currentFoundationAddress = api.foundationprimaryunlockhash
 	var currentFailoverAddress = api.foundationfailsafeunlockhash
 	var height = api.height
 
@@ -64,7 +66,7 @@ exports.CheckCurrentFoundationAddresses = async function(params) {
 
 		// Inserting new entry on the Foundation addresses table
 		var sqlQuery = "INSERT INTO FoundationAddressesChanges (Height,FoundationAddress,FailoverAddress) VALUES "
-        	+ "(" + height + ",'" + foundationAddress + "','" + failoverAddress + "')"
+        	+ "(" + height + ",'" + currentFoundationAddress + "','" + currentFailoverAddress + "')"
 		await SqlAsync.Sql(params, sqlQuery)
 
 		if (sql[0].FoundationAddress != currentFoundationAddress) {
@@ -73,21 +75,26 @@ exports.CheckCurrentFoundationAddresses = async function(params) {
 			
 			// The ownership of all the unspent outputs of the Foundation need to be transferred to the new address
 			// A - Getting the list of outputs
-			var sqlQuery = "SELECT * FROM Outputs WHERE Spent = 0 AND FoundationUnclaimed = 1 AND Address = '" + sql[0].FoundationAddress + "'"
+			var sqlQuery = "SELECT * FROM Outputs WHERE (Spent = 0 OR Spent IS NULL) AND FoundationUnclaimed = 1 AND Address = '" + sql[0].FoundationAddress + "'"
 			var outputsList = await SqlAsync.Sql(params, sqlQuery)
-			console.log("**** Updating the ownership of" + outputsList.length + " outputs")
+			console.log("**** Updating the ownership of " + outputsList.length + " outputs")
 
 			// B - Updating Outputs
-			var sqlQuery = "UPDATE Outputs SET Address = '" + currentFoundationAddress + "' WHERE Spent = 0 AND FoundationUnclaimed = 1"
+			var sqlQuery = "UPDATE Outputs SET Address = '" + currentFoundationAddress + "' WHERE (Spent = 0 OR Spent IS NULL) AND FoundationUnclaimed = 1 "
 				+ "AND Address = '" + sql[0].FoundationAddress + "'"
 			await SqlAsync.Sql(params, sqlQuery)
 
 			// C - Updating AddressesChanges
 			for (var i = 0; i < outputsList.length; i++) {
 				var sqlQuery = "UPDATE AddressChanges SET Address = '" + currentFoundationAddress + "' WHERE Address = '" + sql[0].FoundationAddress 
-					+ "' AND Height = " + outputsList[i].CreatedOnBlock
+					+ "' AND Height = " + outputsList[i].CreatedOnBlock + " AND TxType = 'foundationsub'"
 				await SqlAsync.Sql(params, sqlQuery)
 			}
+
+			// D - New foundation address as a hash type
+			var toAddHashTypes = "('" + currentFoundationAddress + "','address','')"
+			var sqlQuery = SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, currentFoundationAddress)
+			await SqlAsync.Sql(params, sqlQuery)
 
 		} else {
 			// Just the failover address changed. No need to update outputs

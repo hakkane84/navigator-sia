@@ -229,7 +229,7 @@ async function minerPayoutProcessor(params, sqlBatch, addressesImplicated, heigh
         blockRewardCoins = blockRewardCoins + subsidyAmount
 
         // Getting the current Foundation main address from database
-        var sqlQuery = "SELECT Height, FoundationAddress FROM FoundationAddressesChanges WHERE Height < " + height + " ORDER BY Height ASC"
+        var sqlQuery = "SELECT Height, FoundationAddress FROM FoundationAddressesChanges WHERE Height <= " + height + " ORDER BY Height ASC"
         var addressesList = await SqlAsync.Sql(params, sqlQuery)
         var currentFoundationAddress = addressesList[addressesList.length-1].FoundationAddress
 

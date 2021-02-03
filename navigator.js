@@ -24,7 +24,7 @@ var SqlComposer = require("./modules/sql_composer.js")
 var Restserver = require('./modules/restserver.js')
 var Watchdog = require('./modules/watchdog.js')
 var WebInjector = require("./modules/webinjector.js")
-var Foundation = require("./foundation.js")
+var Foundation = require("./modules/foundation.js")
 
 // STARTING
 var currentdate = new Date(); 
