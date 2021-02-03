@@ -24,6 +24,7 @@ var SqlComposer = require("./modules/sql_composer.js")
 var Restserver = require('./modules/restserver.js')
 var Watchdog = require('./modules/watchdog.js')
 var WebInjector = require("./modules/webinjector.js")
+var Foundation = require("./foundation.js")
 
 // STARTING
 var currentdate = new Date(); 
@@ -525,6 +526,9 @@ async function checkReorgs(sqlHeight, blocksToIndex, blocksOrphaned) {
         if (blocksOrphaned.length > 0) {
             await saveOrphanedBlocks(blocksOrphaned)
         }
+
+        // Prior to request new block, we check if the addresses of the Sia Foundation have changed
+        await Foundation.CheckCurrentFoundationAddresses(params)
 
         var startTimestamp = Math.floor(Date.now() / 1000)
         blockRequest(blocksToIndex, 0, startTimestamp)
