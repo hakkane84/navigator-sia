@@ -55,9 +55,7 @@ exports.CheckCurrentFoundationAddresses = async function(params) {
 
 	// Current addresses from the Sia API
 	var api = await Commons.MegaRouter(params, 0, '/consensus')
-	////////////////////////////////////////////////////////////////////////////////
-	var currentFoundationAddress = `b53b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807`
-    //var currentFoundationAddress = api.foundationprimaryunlockhash
+    	var currentFoundationAddress = api.foundationprimaryunlockhash
 	var currentFailoverAddress = api.foundationfailsafeunlockhash
 	var height = api.height
 
