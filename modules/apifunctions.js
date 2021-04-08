@@ -204,7 +204,8 @@ exports.Hash = async function(params, res, req) {
                 recordset[0].RevisionNum = 18446744073709551616
             }
             // Adding the computed SF fees
-            recordset[0].SfFees = (recordset[0].ValidProof1Value + recordset[0].ValidProof2Value) * params.blockchain.siafundFees
+            var t = (recordset[0].ValidProof1Value + recordset[0].ValidProof2Value) / (1 - params.blockchain.siafundFees)
+            recordset[0].SfFees = t * params.blockchain.siafundFees
             resJson.push(recordset[0])
         } else {
             resJson.push({})
