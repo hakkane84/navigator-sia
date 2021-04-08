@@ -722,12 +722,17 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
     var contractId = tx.filecontractids[0]
 
 
-    if (tx.rawtransaction.siacoininputs.length >= 2) {
+    if (tx.rawtransaction.siacoininputs.length >= 1) {
         // This is for conventional contracts of nowadays rules, with two inputs from renter and host
+        // EXCEPTION: some of these renew&clear have only one input from the renter
         // First, we identify the renter and the host transactions, and process them in a separate function
         var link = []
-        link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
-        link[1] = tx.rawtransaction.siacoininputs[1].parentid // Host TX
+        if (tx.rawtransaction.siacoininputs.length == 2) {
+            link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
+            link[1] = tx.rawtransaction.siacoininputs[1].parentid // Host TX
+        } else {
+            link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
+        }
         
 
         // Finding the matching transactions
@@ -773,8 +778,14 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         } 
         var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
         var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
-        var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
-        var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash
+        if (tx.rawtransaction.siacoininputs.length == 2) {
+            var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
+            var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash
+        } else {
+            var hostCollateralValue = 0
+            var hostCollateralSender = "None"
+            var collateralPostingHash = "None"
+        }
         var totalTransacted = renterAllowanceValue + hostCollateralValue
 
         // Storage proof possible results:
