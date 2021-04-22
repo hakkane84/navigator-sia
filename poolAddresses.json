@@ -34,7 +34,8 @@
     {
         "name": "DxPool",
         "addresses": [
-            "a88ba693dcc00e20f99231807bd5d7b69c1b48cb243d2a36149dab91c178c18b592e219d65ec"
+            "a88ba693dcc00e20f99231807bd5d7b69c1b48cb243d2a36149dab91c178c18b592e219d65ec",
+            "9fbe5e0e17cbaab13a8d0a56c33f32222fc48c9512565184401dea648e786db4cc078b90d8f5"
         ]
     }
 ]
