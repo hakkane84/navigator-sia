@@ -29,7 +29,7 @@
         "addresses": [
             "24f261a8bb7a788562520b98443f6f33e1bcd13c5d87ea7de86590c79d1ddca3bff28a0ba628"
         ],
-        "api": "http://hyperpool.tech/api/currencies"
+        "api": "https://hyperpool.tech/api/currencies"
     },
     {
         "name": "DxPool",
