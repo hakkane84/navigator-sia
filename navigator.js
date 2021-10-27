@@ -111,6 +111,9 @@ async function initialMaintenance() {
 
     // Initializing the Watchdog
     Watchdog.Watchdog(params, currentdate.getMinutes())
+    
+    // Initializing the Web3Index API creation routine
+    Web3IndexApi.CreateApi(params)
 
     // Next: Determine the blocks to index initially
     getBlocksToIndex(params.purgeBlocksOnStartup)
