@@ -30,12 +30,12 @@ async function apiFormation(params) {
     var today = Math.round(start.getTime()/1000)
     var sixMonthsAgo = today - (86400 * 180)
 
-    // A - Current height
+    // A - SQL query 1: Current height
     var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "Height", "Height", 1)
     var sql = await SqlAsync.Sql(params, sqlQuery)
     var currentHeight = sql[0].Height
     
-    // B - SQL query 1: USD prices
+    // B - SQL query 2: USD prices
     var sqlQuery = "SELECT Timestamp, USD FROM ExchangeRates ORDER By Timestamp DESC"
     var pricesSql = await SqlAsync.Sql(params, sqlQuery)
     // Transforming the array into an object, for faster lookup
@@ -44,7 +44,7 @@ async function apiFormation(params) {
         pricesDict[pricesSql[i].Timestamp] = pricesSql[i].USD
     }
 
-    // C - SQL query 2: Contracts from the last years
+    // C - SQL query 3: Contracts from the last years
     var sqlQuery = "SELECT ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp From ContractInfo ORDER BY Height ASC"
     var contractsSql = await SqlAsync.Sql(params, sqlQuery)
 
@@ -60,7 +60,6 @@ async function apiFormation(params) {
     for (var i = 0; i < days.length; i++) {
         daysDict[days[i].date] = 0
     }
-
 
     // D2 - Initializing accumulators of revenue
     var sixMonthsAgoRevenue = 0
@@ -150,7 +149,7 @@ async function convertUSD(params, contract, timestamp, pricesDict) {
     var sc = (contract.ValidProof1Value + contract.ValidProof2Value + contract.Fees) / (1 - params.blockchain.siafundFees)
 
     // Reading the dictionary of prices for the USD conversion
-    var value = (sc / 1000000000000000000000000 * pricesDict[day])
+    var value = (sc / params.blockchain.coinPrecision * pricesDict[day])
     if (value == null || value == undefined || value !== value) {
         value = 0
     }
