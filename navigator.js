@@ -25,6 +25,7 @@ var Restserver = require('./modules/restserver.js')
 var Watchdog = require('./modules/watchdog.js')
 var WebInjector = require("./modules/webinjector.js")
 var Foundation = require("./modules/foundation.js")
+var Web3IndexApi = require("./modules/web3indexapi.js")
 
 // STARTING
 var currentdate = new Date(); 
