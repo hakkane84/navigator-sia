@@ -283,6 +283,8 @@ async function createNavigatorTables(params) {
         + "ContractId char(64), "
         + "AllowancePosting char(76), "
         + "RenterValue numeric(36, 0), "
+	+ "Allowance2Posting char(76), "
+        + "Renter2Value numeric(36, 0), "
         + "CollateralPosting char(76), "
         + "HostValue numeric(36, 0), "
         + "Fees numeric(36, 0), "
