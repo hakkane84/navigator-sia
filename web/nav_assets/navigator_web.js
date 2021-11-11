@@ -946,6 +946,17 @@ function openTab(evt, cityName) {
                 var linkInBox = htmlPath + "?search=" + data[1].AllowancePosting
                 var valueInBox = "- " + readable(data[1].RenterValue) + " SC"
                 addRowSender(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, colorInBox)
+		    
+		if (data[1].Renter2Value > 0) {
+                    // Tri-input contracts
+                    var objectInBox = "Renter: allowance posting hash"
+                    var colorInBox = theme.brightRed
+                    var iconInBox = "allowance"
+                    var addressInBox = shortHash(data[1].Allowance2Posting)
+                    var linkInBox = htmlPath + "?search=" + data[1].Allowance2Posting
+                    var valueInBox = "- " + readable(data[1].Renter2Value) + " SC"
+                    addRowSender(objectInBox, linkInBox, addressInBox, valueInBox, iconInBox, colorInBox)
+                }
                 
                 var objectInBox2 = "Host: collateral posting hash"
                 var iconInBox2 = "collateral"
