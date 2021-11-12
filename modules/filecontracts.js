@@ -864,24 +864,6 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
             }    
         }
 
-        if (triParent == false) {
-            var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
-            var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
-            var renterAllowance2Value = 0 
-            var renterAllowance2Sender = null
-            var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
-            var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash   
-        } else {
-            // Tri-Parent contracts
-            var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
-            var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
-            var renterAllowance2Value = parseInt(tx.siacoininputoutputs[1].value) 
-            var renterAllowance2Sender = tx.siacoininputoutputs[1].unlockhash
-            var hostCollateralValue = parseInt(tx.siacoininputoutputs[2].value)
-            var hostCollateralSender = tx.siacoininputoutputs[2].unlockhash
-        }
-
-        
         var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
         var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
         if (tx.rawtransaction.siacoininputs.length == 2) {
