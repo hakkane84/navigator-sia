@@ -36,7 +36,14 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         var link = []
         link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
         link[1] = tx.rawtransaction.siacoininputs[1].parentid // Host TX
-        
+        var triParent = false
+        if (tx.rawtransaction.siacoininputs.length == 3) {
+            // "Tri-Parent" Bizarre contracts made from 3 inputs, the first two belonging to the renter and the third
+            // to the host. Observed since 2020
+            link[2] = tx.rawtransaction.siacoininputs[2].parentid // Host TX
+            triParent = true
+        }
+        var allowance2PostingHash = null // Default as null, it does not exist in most of the cases
 
         // Finding the matching transactions
         for (i = 0; i < link.length; i++) { // For both links
@@ -46,11 +53,22 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
                     if (link[i] == apiblock.transactions[m].siacoinoutputids[0]) {
                         matchBool = true // Boolean to mark we found the matching TX
                         var linkId = ""
-                        if (i == 0) { // Renter TX=
-                            linkId = "allowancePost"  // Renter
+                        if (triParent == false) {
+                            if (i == 0) { // Renter TX=
+                                linkId = "allowancePost"  // Renter
+                            } else {
+                                linkId = "collateralPost" // Host
+                            }
                         } else {
-                            linkId = "collateralPost" // Host
+                            if (i == 0) { // Renter TX=
+                                linkId = "allowancePost"  // Renter-1
+                            } else if (i == 1) {
+                                linkId = "allowancePost2"  // Renter-2
+                            } else {
+                                linkId = "collateralPost" // Host
+                            }
                         }
+                        
                         txsIndexed.push(m) // Marking TX as indexed
                         // In top of processing the TX, it saves the addresses used in "the returnArray" to later avoid race conditions saving addresses as hash types
                         var returnArray = contractPreTx(params, apiblock.transactions[m], height, timestamp, linkId, contractId)
@@ -60,6 +78,8 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
                             var allowancePostingHash = returnArray[1]
                         } else if (returnArray[2] == "collateralPost") {
                             var collateralPostingHash = returnArray[1]
+                        } else if (returnArray[2] == "allowancePost2") {
+                            allowance2PostingHash = returnArray[1]
                         }
                         newSql = newSql.concat(returnArray[3])
                     }
@@ -71,19 +91,43 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
                 // in the next block. Sometimes one is missing, some others, the two of them
                 // In these cases, as I have to link something for reference, instead of the Hash of those TX, I show the intermediate address: that will link the 2 transactions if a user is browsing
                 // It is probably an imperfect solution, but I consider it is valid for a user
+                // Also, tri-parent contracts have the two previous TXs on different blocks
                 
                 if (i == 0) { // Renter TX
                     var allowancePostingHash = tx.siacoininputoutputs[0].unlockhash
-                } else { // Host TX
-                    var collateralPostingHash = tx.siacoininputoutputs[1].unlockhash
+                } else {
+                    if (triParent == false) {
+                        var collateralPostingHash = tx.siacoininputoutputs[1].unlockhash // Host TX
+                    } else {
+                        if (i == 1) {
+                            allowance2PostingHash = tx.siacoininputoutputs[1].unlockhash // Second renter input
+                        } else if (i == 2) {
+                            var collateralPostingHash = tx.siacoininputoutputs[2].unlockhash // Host TX
+                        }
+                    }
+                    
                 }
             }     
-        } 
-        var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
-        var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
-        var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
-        var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash
-        var totalTransacted = renterAllowanceValue + hostCollateralValue
+        }
+
+        if (triParent == false) {
+            var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
+            var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
+            var renterAllowance2Value = 0 
+            var renterAllowance2Sender = null
+            var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
+            var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash   
+        } else {
+            // Tri-Parent contracts
+            var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
+            var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
+            var renterAllowance2Value = parseInt(tx.siacoininputoutputs[1].value) 
+            var renterAllowance2Sender = tx.siacoininputoutputs[1].unlockhash
+            var hostCollateralValue = parseInt(tx.siacoininputoutputs[2].value)
+            var hostCollateralSender = tx.siacoininputoutputs[2].unlockhash
+        }
+        
+        var totalTransacted = renterAllowanceValue + hostCollateralValue + renterAllowance2Value
 
         // Storage proof possible results:
         var validProof1Output = tx.rawtransaction.filecontracts[0].validproofoutputs[0].id
@@ -105,13 +149,16 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         // Address changes
         addressesImplicated.push({"hash": renterAllowanceSender, "sc": (renterAllowanceValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
         addressesImplicated.push({"hash": hostCollateralSender, "sc": (hostCollateralValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
-        
+        if (triParent == true) {
+            addressesImplicated.push({"hash": renterAllowance2Sender, "sc": (renterAllowance2Value * (-1)), "masterHash": masterHash, "txType": "contractform"})
+        }
         // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
         if (tx.siacoinoutputs != null) {
             for (var i = 0; i < tx.siacoinoutputs.length; i++) {
                 addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
             }
         }
+        
         
     } else if (tx.rawtransaction.siacoininputs.length == 1) {
         // EXCEPTIONS:
@@ -123,6 +170,9 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         var collateralPostingHash = "Unknown (legacy contract)"
         var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
         var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value)
+        var allowance2PostingHash = null
+        var renterAllowance2Sender = null
+        var renterAllowance2Value = 0 
         var hostCollateralValue = 0
         var hostCollateralSender = "Unknown (legacy contract)"
         var totalTransacted = renterAllowanceValue
@@ -181,6 +231,20 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
 
         // Address change
         addressesImplicated.push({"hash": renterAllowanceSender, "sc": (renterAllowanceValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
+        
+        // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
+        if (tx.siacoinoutputs != null) {
+            // Adding a new entry for AddressesChanges
+            for (var i = 0; i < tx.siacoinoutputs.length; i++) {
+                addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+                // Updating the renter value if the addresses match
+                if (tx.siacoinoutputs[i].unlockhash == renterAllowanceSender) {
+                    renterAllowanceValue = BigInt(renterAllowanceValue) - BigInt(tx.siacoinoutputs[i].value)
+                } else if (tx.siacoinoutputs[i].unlockhash == renterAllowance2Sender) {
+                    renterAllowance2Value = BigInt(renterAllowance2Value) - BigInt(tx.siacoinoutputs[i].value)
+                }
+            }
+        }
     }
     
 
@@ -201,6 +265,7 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         //console.log("*** Ignoring the contract " + masterHash + " set to expire in billions of blocks into the future")
     } else {
         var toAddContractInfo = "('" + masterHash + "','" + contractId + "','" + allowancePostingHash + "'," + renterAllowanceValue + ",'" 
+            + allowance2PostingHash + "'," + renterAllowance2Value + ",'"
             + collateralPostingHash + "'," + hostCollateralValue + "," + minerFees + "," + windowStart + "," + windowEnd + "," 
             + revisionNumber + "," + fileSize + "," + fileSize + ",'"
             + validProof1Output + "','" + validProof1Address + "'," + validProof1Value + ",'"
@@ -488,7 +553,6 @@ exports.proofProcess = function(params, apiblock, n, height, timestamp) {
                     // Connected transaction ID as a hash type
                     var toAddHashTypes = "('" + extraHash + "','storageproof','" + masterHash + "')"
                     newSql.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, extraHash))
-
                 }
             }
         }
@@ -727,13 +791,20 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         // EXCEPTION: some of these renew&clear have only one input from the renter
         // First, we identify the renter and the host transactions, and process them in a separate function
         var link = []
+        var triParent = false
         if (tx.rawtransaction.siacoininputs.length == 2) {
             link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
             link[1] = tx.rawtransaction.siacoininputs[1].parentid // Host TX
-        } else {
+        } else if (tx.rawtransaction.siacoininputs.length == 1) {
             link[0] = tx.rawtransaction.siacoininputs[0].parentid // Renter TX
+        } else if (tx.rawtransaction.siacoininputs.length == 3) {
+            // "Tri-Parent" Bizarre contracts made from 3 inputs, the first two belonging to the renter and the third
+            // to the host. Observed since 2020
+            link[2] = tx.rawtransaction.siacoininputs[2].parentid // Host TX
+            triParent = true
         }
-        
+        var allowance2PostingHash = null // Default as null, it does not exist in most of the cases
+
 
         // Finding the matching transactions
         for (i = 0; i < link.length; i++) { // For both links
@@ -743,11 +814,22 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
                     if (link[i] == apiblock.transactions[m].siacoinoutputids[0]) {
                         matchBool = true // Boolean to mark we found the matching TX
                         var linkId = ""
-                        if (i == 0) { // Renter TX=
-                            linkId = "allowancePost"  // Renter
+                        if (triParent == false) {
+                            if (i == 0) { // Renter TX=
+                                linkId = "allowancePost"  // Renter
+                            } else {
+                                linkId = "collateralPost" // Host
+                            }
                         } else {
-                            linkId = "collateralPost" // Host
+                            if (i == 0) { // Renter TX=
+                                linkId = "allowancePost"  // Renter-1
+                            } else if (i == 1) {
+                                linkId = "allowancePost2"  // Renter-2
+                            } else {
+                                linkId = "collateralPost" // Host
+                            }
                         }
+
                         txsIndexed.push(m) // Marking TX as indexed
                         // In top of processing the TX, it saves the addresses used in "the returnArray" to later avoid race conditions saving addresses as hash types
                         var returnArray = contractPreTx(params, apiblock.transactions[m], height, timestamp, linkId, contractId)
@@ -757,6 +839,8 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
                             var allowancePostingHash = returnArray[1]
                         } else if (returnArray[2] == "collateralPost") {
                             var collateralPostingHash = returnArray[1]
+                        } else if (returnArray[2] == "allowancePost2") {
+                            allowance2PostingHash = returnArray[1]
                         }
                         newSql = newSql.concat(returnArray[3])
                     }
@@ -768,25 +852,47 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
                 // in the next block. Sometimes one is missing, some others, the two of them
                 // In these cases, as I have to link something for reference, instead of the Hash of those TX, I show the intermediate address: that will link the 2 transactions if a user is browsing
                 // It is probably an imperfect solution, but I consider it is valid for a user
+                // Also, tri-parent contracts have the two previous TXs on different blocks
                 
                 if (i == 0) { // Renter TX
                     var allowancePostingHash = tx.siacoininputoutputs[0].unlockhash
-                } else { // Host TX
-                    var collateralPostingHash = tx.siacoininputoutputs[1].unlockhash
+                } else {
+                    if (triParent == false) {
+                        var collateralPostingHash = tx.siacoininputoutputs[1].unlockhash // Host TX
+                    } else {
+                        if (i == 1) {
+                            allowance2PostingHash = tx.siacoininputoutputs[1].unlockhash // Second renter input
+                        } else if (i == 2) {
+                            var collateralPostingHash = tx.siacoininputoutputs[2].unlockhash // Host TX
+                        }
+                    }
+                    
                 }
-            }     
-        } 
+            }    
+        }
+
         var renterAllowanceValue = parseInt(tx.siacoininputoutputs[0].value) 
         var renterAllowanceSender = tx.siacoininputoutputs[0].unlockhash
         if (tx.rawtransaction.siacoininputs.length == 2) {
             var hostCollateralValue = parseInt(tx.siacoininputoutputs[1].value)
             var hostCollateralSender = tx.siacoininputoutputs[1].unlockhash
-        } else {
+            var renterAllowance2Value = 0 
+            var renterAllowance2Sender = null
+        } else if (tx.rawtransaction.siacoininputs.length == 1) {
             var hostCollateralValue = 0
             var hostCollateralSender = "None"
             var collateralPostingHash = "None"
+            var renterAllowance2Value = 0 
+            var renterAllowance2Sender = null
+        } else if (tx.rawtransaction.siacoininputs.length == 3) {
+            // Tri-Parent contracts
+            var hostCollateralValue = parseInt(tx.siacoininputoutputs[2].value)
+            var hostCollateralSender = tx.siacoininputoutputs[2].unlockhash
+            var renterAllowance2Value = parseInt(tx.siacoininputoutputs[1].value) 
+            var renterAllowance2Sender = tx.siacoininputoutputs[1].unlockhash
         }
-        var totalTransacted = renterAllowanceValue + hostCollateralValue
+
+        var totalTransacted = renterAllowanceValue + hostCollateralValue + renterAllowance2Value
 
         // Storage proof possible results:
         var validProof1Output = tx.rawtransaction.filecontracts[0].validproofoutputs[0].id
@@ -808,11 +914,21 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         // Address changes
         addressesImplicated.push({"hash": renterAllowanceSender, "sc": (renterAllowanceValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
         addressesImplicated.push({"hash": hostCollateralSender, "sc": (hostCollateralValue * (-1)), "masterHash": masterHash, "txType": "contractform"})
+        if (triParent == true) {
+            addressesImplicated.push({"hash": renterAllowance2Sender, "sc": (renterAllowance2Value * (-1)), "masterHash": masterHash, "txType": "contractform"})
+        }
 
         // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
         if (tx.siacoinoutputs != null) {
+            // Adding a new entry for AddressesChanges
             for (var i = 0; i < tx.siacoinoutputs.length; i++) {
                 addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+                // Updating the renter value if the addresses match
+                if (tx.siacoinoutputs[i].unlockhash == renterAllowanceSender) {
+                    renterAllowanceValue = BigInt(renterAllowanceValue) - BigInt(tx.siacoinoutputs[i].value)
+                } else if (tx.siacoinoutputs[i].unlockhash == renterAllowance2Sender) {
+                    renterAllowance2Value = BigInt(renterAllowance2Value) - BigInt(tx.siacoinoutputs[i].value)
+                }
             }
         }   
     }
@@ -835,6 +951,7 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         //console.log("*** Ignoring the contract " + masterHash + " set to expire in billions of blocks into the future")
     } else {
         var toAddContractInfo = "('" + masterHash + "','" + contractId + "','" + allowancePostingHash + "'," + renterAllowanceValue + ",'" 
+            + allowance2PostingHash + "'," + renterAllowance2Value + ",'"    
             + collateralPostingHash + "'," + hostCollateralValue + "," + minerFees + "," + windowStart + "," + windowEnd + "," 
             + revisionNumber + "," + fileSize + "," + fileSize + ",'"
             + validProof1Output + "','" + validProof1Address + "'," + validProof1Value + ",'"

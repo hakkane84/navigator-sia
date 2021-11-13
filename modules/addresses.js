@@ -7,6 +7,24 @@ var SqlAsync = require('./sql_async.js')
 exports.Addresses = async function(params, sqlBatch, addressesImplicated, height, timestamp) {
     // Prepares Addresses changes and address as a hash type for inclusion in the database
     
+    // De-duplication of MasterHash + Address combinations. ScTx transactions already do this, but not the code for contracts 
+    const sortByTwo = (arr = []) => {
+        arr.sort((a, b) => {
+           return a.masterHash.localeCompare(b.masterHash) || a.hash.localeCompare(b.hash);
+        });
+    };
+    sortByTwo(addressesImplicated);
+    for (var m = 1; m < addressesImplicated.length; m++) {
+        if (addressesImplicated[m].masterHash == addressesImplicated[m-1].masterHash
+        && addressesImplicated[m].hash == addressesImplicated[m-1].hash) {
+            addressesImplicated[m-1].sc = BigInt(addressesImplicated[m-1].sc) + BigInt(addressesImplicated[m].sc)
+            addressesImplicated[m-1].sf = BigInt(addressesImplicated[m-1].sf) + BigInt(addressesImplicated[m].sf)
+            addressesImplicated.splice(m, 1)
+            if (m >= addressesImplicated.length) { break } // For safety, as length might have changed
+            m--  
+        }
+    }
+    
     for (var m = 0; m < addressesImplicated.length; m++) {
         if (addressesImplicated[m].masterHash == null) {
             // Pass
