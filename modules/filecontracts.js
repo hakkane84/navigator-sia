@@ -234,8 +234,15 @@ exports.fileContractsProcess = function(params, apiblock, n, height, timestamp) 
         
         // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
         if (tx.siacoinoutputs != null) {
+            // Adding a new entry for AddressesChanges
             for (var i = 0; i < tx.siacoinoutputs.length; i++) {
                 addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+                // Updating the renter value if the addresses match
+                if (tx.siacoinoutputs[i].unlockhash == renterAllowanceSender) {
+                    renterAllowanceValue = BigInt(renterAllowanceValue) - BigInt(tx.siacoinoutputs[i].value)
+                } else if (tx.siacoinoutputs[i].unlockhash == renterAllowance2Sender) {
+                    renterAllowance2Value = BigInt(renterAllowance2Value) - BigInt(tx.siacoinoutputs[i].value)
+                }
             }
         }
     }
@@ -913,8 +920,15 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
 
         // Exception: some modern contracts have a renter-returning output. `us` contracts can do this
         if (tx.siacoinoutputs != null) {
+            // Adding a new entry for AddressesChanges
             for (var i = 0; i < tx.siacoinoutputs.length; i++) {
                 addressesImplicated.push({"hash": tx.siacoinoutputs[i].unlockhash, "sc": tx.siacoinoutputs[i].value, "masterHash": masterHash, "txType": "contractform"})
+                // Updating the renter value if the addresses match
+                if (tx.siacoinoutputs[i].unlockhash == renterAllowanceSender) {
+                    renterAllowanceValue = BigInt(renterAllowanceValue) - BigInt(tx.siacoinoutputs[i].value)
+                } else if (tx.siacoinoutputs[i].unlockhash == renterAllowance2Sender) {
+                    renterAllowance2Value = BigInt(renterAllowance2Value) - BigInt(tx.siacoinoutputs[i].value)
+                }
             }
         }   
     }
