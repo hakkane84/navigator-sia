@@ -46,7 +46,8 @@ exports.PopulateSiafundExchangeRates = async function(params, attempt) {
     // Updates the data on the exchanges database with Siafund rates from Bisq
     console.log("* Getting SF rates from Bisq")
     
-    var apiAddress = "https://markets.bisq.network/api/trades?market=sf_btc&limit=100000"
+    //var apiAddress = "https://markets.bisq.network/api/trades?market=sf_btc&limit=100000"
+    var apiAddress = "https://bisq.markets/api/trades?market=sf_btc&limit=100000" // New API
     await axios.get(apiAddress).then(async function (response) {
         var api = response.data
         await insertSiafundRates(params, api)
@@ -258,7 +259,8 @@ async function updateExchangeData(params, sqlQuery, timestamp) {
 
 async function dailySiafundExchangeData(params, timestamp) {
     // Collects current SF exchange rate and updates the table
-    var apiAddress = "https://markets.bisq.network/api/ticker?market=sf_btc"
+    // var apiAddress = "https://markets.bisq.network/api/ticker?market=sf_btc"
+    var apiAddress = "https://bisq.markets/api/ticker?market=sf_btc" // New API
 
     await axios.get(apiAddress).then(async function (response) {
         var api = response.data
