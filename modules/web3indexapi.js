@@ -46,7 +46,7 @@ async function apiFormation(params) {
 
     // C - SQL query 2: Contracts from the "daysInApi" days
     var sqlQuery = "SELECT ContractId, HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp From ContractInfo "
-        + "WHERE Timestamp > " + sixMonthsAgo + " ORDER BY Height ASC"
+        + "ORDER BY Height ASC"
     var contractsSql = await SqlAsync.Sql(params, sqlQuery)
 
     // D1 - Initializing array with 180 (daysInApi) recent days and a dictionary for faster assignement
