@@ -7,8 +7,8 @@ var SqlComposer = require("./sql_composer.js")
 exports.CreateApi = async function(params) {
     // Routine for creating, four times per day, a JSON file containing the API for the Web3Index
 
-    // Adapting Web3Index methodology to Sia, "Revenue" is calculated as the value of file contracts
-    // (value = the allowance of the renter + the collateral from the host) transformed into USD at the exchange rate of
+    // Adapting Web3Index methodology to Sia, "Revenue" is calculated as the value deposited bt the Sia renters on the
+    // file contracts (the Allowance) transformed into USD at the exchange rate of
     // Siacoin on the day each individual contract was formed
 
     // API creation 4 times per day
@@ -30,12 +30,12 @@ async function apiFormation(params) {
     var today = Math.round(start.getTime()/1000)
     var sixMonthsAgo = today - (86400 * 180)
 
-    // A - SQL query 1: Current height
+    // A - Current height
     var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "Height", "Height", 1)
     var sql = await SqlAsync.Sql(params, sqlQuery)
     var currentHeight = sql[0].Height
     
-    // B - SQL query 2: USD prices
+    // B - SQL query 1: USD prices
     var sqlQuery = "SELECT Timestamp, USD FROM ExchangeRates ORDER By Timestamp DESC"
     var pricesSql = await SqlAsync.Sql(params, sqlQuery)
     // Transforming the array into an object, for faster lookup
@@ -44,8 +44,9 @@ async function apiFormation(params) {
         pricesDict[pricesSql[i].Timestamp] = pricesSql[i].USD
     }
 
-    // C - SQL query 3: Contracts from the last years
-    var sqlQuery = "SELECT ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp From ContractInfo ORDER BY Height ASC"
+    // C - SQL query 2: Contracts from the "daysInApi" days
+    var sqlQuery = "SELECT ContractId, HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp From ContractInfo "
+        + "WHERE Timestamp > " + sixMonthsAgo + " ORDER BY Height ASC"
     var contractsSql = await SqlAsync.Sql(params, sqlQuery)
 
     // D1 - Initializing array with 180 (daysInApi) recent days and a dictionary for faster assignement
@@ -60,6 +61,7 @@ async function apiFormation(params) {
     for (var i = 0; i < days.length; i++) {
         daysDict[days[i].date] = 0
     }
+
 
     // D2 - Initializing accumulators of revenue
     var sixMonthsAgoRevenue = 0
@@ -144,12 +146,20 @@ async function convertUSD(params, contract, timestamp, pricesDict) {
     // Getting the start of the day
     var day = dayStart(timestamp)
 
-    // Total contract value, in SC. It is calculated from the value of the outputs in case of a valid Proof of Storage, plus
-    // the miner fees, plus the 3.9% of network fees paid to the SiaFund holders
-    var sc = (contract.ValidProof1Value + contract.ValidProof2Value + contract.Fees) / (1 - params.blockchain.siafundFees)
+    // Allowance value, in SC. The most straaight-forward approach would be using the transaction output deposited by the renter.
+    // However, on recent years new exotic file contract formats seen on the bloockchain use more than one output from the renter
+    // and the transaction includes a change output thaat returns to the wallet of the renter, complicating this approach.
+    // Instead, we calculate the allowance from the total value deposited on the contract by both renter and host 
+    // (calculated from the outputs in case of a valid Proof of Storage, plus the miner fees, plus the 3.9% of network fees 
+    // paid to the SiaFund holders), and then substracting the value of the transaction output deposited by the host
+    // (the collateral). In other words: Allowance = Contract value - Host's collateral
+    var contractValue = (contract.ValidProof1Value + contract.ValidProof2Value + contract.Fees) / (1 - params.blockchain.siafundFees)
+    sc = contractValue - contract.HostValue
+    if (sc <= 0) { sc = 0 } // Sanity check. No contract currently meets this, but in case of a bug prevents negative allowances
+
 
     // Reading the dictionary of prices for the USD conversion
-    var value = (sc / params.blockchain.coinPrecision * pricesDict[day])
+    var value = (sc / 1000000000000000000000000 * pricesDict[day])
     if (value == null || value == undefined || value !== value) {
         value = 0
     }
