@@ -159,7 +159,7 @@ async function convertUSD(params, contract, timestamp, pricesDict) {
 
 
     // Reading the dictionary of prices for the USD conversion
-    var value = (sc / 1000000000000000000000000 * pricesDict[day])
+    var value = (sc / params.blockchain.coinPrecision * pricesDict[day])
     if (value == null || value == undefined || value !== value) {
         value = 0
     }
