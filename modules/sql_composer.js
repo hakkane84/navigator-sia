@@ -56,7 +56,7 @@ exports.InsertSql= function(params, table, toAdd, toCheck) {
     } else if (table == "ContractInfo") {
         var sqlQuery = "IF NOT EXISTS (SELECT MasterHash FROM ContractInfo WHERE MasterHash = '" + toCheck
             + "') INSERT INTO ContractInfo (MasterHash,ContractId,AllowancePosting,RenterValue,Allowance2Posting,Renter2Value,"
-            + "CollateralPosting,HostValue,Fees,WindowStart,WindowEnd," 
+            + "Allowance3Posting,Renter3Value,CollateralPosting,HostValue,Fees,WindowStart,WindowEnd," 
             + "RevisionNum,OriginalFileSize,CurrentFileSize,ValidProof1Output,ValidProof1Address,ValidProof1Value,ValidProof2Output,ValidProof2Address,ValidProof2Value," 
             + "MissedProof1Output,MissedProof1Address,MissedProof1Value,MissedProof2Output,MissedProof2Address,MissedProof2Value,"
             + "MissedProof3Output,MissedProof3Address,MissedProof3Value,Height,Timestamp,Status,Renew,AtomicRenewal,RenewsContractId)"  
