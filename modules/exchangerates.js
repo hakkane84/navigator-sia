@@ -264,7 +264,7 @@ async function dailySiafundExchangeData(params, timestamp) {
 
     await axios.get(apiAddress).then(async function (response) {
         var api = response.data
-        var btc = parseFloat(api[0].last)
+        var btc = parseFloat(api.last)
         await updateCurrentSiafundExchange(params, timestamp, btc)
         
     }).catch(async function (error) {
