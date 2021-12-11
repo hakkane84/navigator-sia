@@ -132,9 +132,9 @@ async function apiFormation(params) {
             thirtyDaysAgo: parseFloat(thirtyDaysAgoRevenue.toFixed(2)),
             sixtyDaysAgo: parseFloat(sixtyDaysAgoRevenue.toFixed(2)),
             ninetyDaysAgo: parseFloat(ninetyDaysAgoRevenue.toFixed(2)),
-            sixMonthsAgo: parseFloat(sixMonthsAgoRevenue.toFixed(2)),
-            days: days
-        }
+            sixMonthsAgo: parseFloat(sixMonthsAgoRevenue.toFixed(2))
+        },
+        days: days
     }
 
     // G - Saving API file
