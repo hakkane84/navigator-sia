@@ -35,12 +35,13 @@ async function apiFormation(params) {
     var start = new Date();
     start.setUTCHours(0,0,0,0);
     var today = Math.round(start.getTime()/1000)
-    var sixMonthsAgo = today - (86400 * 180)
 
     // A - Current height
     var sqlQuery = SqlComposer.SelectTop(params, "BlockInfo", "Height", "Height", 1)
     var sql = await SqlAsync.Sql(params, sqlQuery)
     var currentHeight = sql[0].Height
+    var blockchainDays = Math.ceil(currentHeight / 144) // Days the blocckchain has existed. 144 blocks per day
+    var genesisDate = today - (blockchainDays * 86400) // Aprox. date of the genesis
     
     // B - SQL query 1: USD prices
     var sqlQuery = "SELECT Timestamp, USD FROM ExchangeRates ORDER By Timestamp DESC"
@@ -58,9 +59,9 @@ async function apiFormation(params) {
 
     // D1 - Initializing array with 180 (daysInApi) recent days and a dictionary for faster assignement
     var days = []
-    for (var i = 0; i < daysInApi; i++) {
+    for (var i = 0; i < blockchainDays; i++) {
         days.push({
-            date: (sixMonthsAgo + (i * 86400)),
+            date: (genesisDate + (i * 86400)),
             revenue: 0
         })
     }
@@ -111,19 +112,15 @@ async function apiFormation(params) {
         if (sc <= 0) { sc = 0 } 
         var hostFees = await convertUSD(params, sc, contract.Timestamp, pricesDict)
 
-        // Only contracts from the last 180 days
-        if (contract.Height > (currentHeight - (daysInApi * 144))) {
-            // Network fees accrued on each day, to be included on the "days" array
-            var contractDay = dayStart(contract.Timestamp) // Start of the day of the contract
-            daysDict[contractDay] = daysDict[contractDay] + networkFees
-        }
-        if (contract.WindowEnd > (currentHeight - (daysInApi * 144))) {
-            // Host fees accrued on each day
-            // Estimated timestamp for the end of the contract, considering on average, one block on Sia is 10 min, or 600 secs
-            var contractEndTimestamp = parseInt(contract.Timestamp) + ((parseInt(contract.WindowEnd) - parseInt(contract.Height)) * 600)
-            var contracEndDay = dayStart(contractEndTimestamp)
-            daysDict[contracEndDay] = daysDict[contracEndDay] + hostFees
-        }
+        // Network fees accrued on each day, to be included on the "days" array
+        var contractDay = dayStart(contract.Timestamp) // Start of the day of the contract
+        daysDict[contractDay] = daysDict[contractDay] + networkFees
+        
+        // Host fees accrued on each day
+        // Estimated timestamp for the end of the contract, considering on average, one block on Sia is 10 min, or 600 secs
+        var contractEndTimestamp = parseInt(contract.Timestamp) + ((parseInt(contract.WindowEnd) - parseInt(contract.Height)) * 600)
+        var contracEndDay = dayStart(contractEndTimestamp)
+        daysDict[contracEndDay] = daysDict[contracEndDay] + hostFees
     }
 
     // F - API building
@@ -163,6 +160,9 @@ async function apiFormation(params) {
             oneDayAgoRevenue = oneDayAgoRevenue + days[i].revenue
         }
     }
+
+    // Trimming to the last daysInApi from days array
+    days = days.slice(days.length - daysInApi)
 
     // Final API structure
     var finalApi = {
