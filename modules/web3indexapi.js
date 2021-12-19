@@ -7,9 +7,16 @@ var SqlComposer = require("./sql_composer.js")
 exports.CreateApi = async function(params) {
     // Routine for creating, four times per day, a JSON file containing the API for the Web3Index
 
-    // Adapting Web3Index methodology to Sia, "Revenue" is calculated as the value deposited bt the Sia renters on the
-    // file contracts (the Allowance) transformed into USD at the exchange rate of
-    // Siacoin on the day each individual contract was formed
+    // Adapting Web3Index methodology to Sia, "Revenue" is calculated as the value spent by Sia renters to hosts for their
+    // storage services. This is the sum of three different concepts (or fees):
+    // * Fees paid to the hosts for their service (storage, bandwidth, etc): it is calculated from the amount depostided on the
+    //   file contracts (the Allowance) minus the amount that remains unspent and gets returned at the end of the
+    //   contract. This value is transformed into USD at the exchange rate of the end of the contract (when the nspent fraction
+    //   of the allowance is reurned)
+    // * Miner fees (fees for including the file contract on the blockchain), transformed to USD at the date of the
+    //   contract formation. Marginal, less than 1SC
+    // * SiaFund fees (the 3.9% of the total contract value, which is paid to the holders of the secondary token SiaFund),
+    //   transformed to USD at the date of the contract formation
 
     // API creation 4 times per day
     var cronJob = cron.job("00 00 00,06,12,18 * * *", function(){
@@ -44,9 +51,9 @@ async function apiFormation(params) {
         pricesDict[pricesSql[i].Timestamp] = pricesSql[i].USD
     }
 
-    // C - SQL query 2: Contracts from the "daysInApi" days
-    var sqlQuery = "SELECT HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp From ContractInfo "
-        + "ORDER BY Height ASC"
+    // C - SQL query 2: Contracts
+    var sqlQuery = "SELECT HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp, WindowEnd "
+        + "From ContractInfo ORDER BY Height ASC"
     var contractsSql = await SqlAsync.Sql(params, sqlQuery)
 
     // D1 - Initializing array with 180 (daysInApi) recent days and a dictionary for faster assignement
@@ -62,7 +69,6 @@ async function apiFormation(params) {
         daysDict[days[i].date] = 0
     }
 
-
     // D2 - Initializing accumulators of revenue
     var sixMonthsAgoRevenue = 0
     var ninetyDaysAgoRevenue = 0
@@ -76,41 +82,48 @@ async function apiFormation(params) {
     
     // E - Loop building the revenue figures in USD
     for (var i = 0; i < contractsSql.length; i++) {
-        var contractValue = await convertUSD(params, contractsSql[i], contractsSql[i].Timestamp, pricesDict)
+        var contract = contractsSql[i]
 
-        // Revenue accumulators
-        if (contractsSql[i].Height < (currentHeight - (180 * 144))) {
-            sixMonthsAgoRevenue = sixMonthsAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (90 * 144))) {
-            ninetyDaysAgoRevenue = ninetyDaysAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (60 * 144))) {
-            sixtyDaysAgoRevenue = sixtyDaysAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (30 * 144))) {
-            thirtyDaysAgoRevenue = thirtyDaysAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (14 * 144))) {
-            twoWeeksAgoRevenue = twoWeeksAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (7 * 144))) {
-            oneWeekAgoRevenue = oneWeekAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - (2 * 144))) {
-            twoDaysAgoRevenue = twoDaysAgoRevenue + contractValue
-        }
-        if (contractsSql[i].Height < (currentHeight - 144)) {
-            oneDayAgoRevenue = oneDayAgoRevenue + contractValue
-        }
-        nowRevenue = nowRevenue + contractValue
+        // E1 - Miner fees and SiaFund fees, paid at the moment of the contract formation
+        // SiaFund fees - a 3.9% (params.blockchain.siafundFees) of the total contract value. Total contract value is calcualted
+        // from the two valid proof outputs plus the miner fees and that extra 3.9%
+        var contractValue = (contract.ValidProof1Value + contract.ValidProof2Value + contract.Fees) 
+            / (1 - params.blockchain.siafundFees)
+        var sfFees = contractValue * params.blockchain.siafundFees
+        
+        // Total fees: SF fees + miner fees
+        var sc = sfFees + contract.Fees
+        var networkFees = await convertUSD(params, sc, contract.Timestamp, pricesDict)
+
+        // E2 - Fees paid to the host, calculated at the end of the contract (block indicated at WindowEnd)
+        // This is = Allowance deposited by the renter - Returned allowance at the end of the contract
+        // * As some contracts are made from either 1, 2, 3 or more Siacoin inputs deposited by the renter, to simplify
+        //   we calculate it as the coins locked on the contract minus the input deposited by the host as collateral.
+        //   This is based on the assumption that in all the contracts, the input from the host is the last one in the list
+        //   Every contract on the Sia blockchain so far respects this non-written rule. It is messy to make this assumption,
+        //   but at the time being this is the sole possible way to calculate how much the renter spent in allowance
+        // * Returned allowance is ValidProof1Value, as the Navigator database already has this value updated from the latest
+        //   contract revision on the contracts database
+        var renterAllowance = contract.ValidProof1Value + contract.ValidProof2Value - contract.HostValue
+        var sc = renterAllowance - contract.ValidProof1Value
+        // Sanity check. No contract currently meets this, but in case of a bug prevents negative values. We err 
+        // with a conservative Revenue value
+        if (sc <= 0) { sc = 0 } 
+        var hostFees = await convertUSD(params, sc, contract.Timestamp, pricesDict)
 
         // Only contracts from the last 180 days
-        if (contractsSql[i].Height > (currentHeight - (daysInApi * 144))) {
-            // Contract value accrued on each day, to be included on the "days" array
-            var contractDay = dayStart(contractsSql[i].Timestamp) // Start of the day of the contract
-            daysDict[contractDay] = daysDict[contractDay] + contractValue
-        }      
+        if (contract.Height > (currentHeight - (daysInApi * 144))) {
+            // Network fees accrued on each day, to be included on the "days" array
+            var contractDay = dayStart(contract.Timestamp) // Start of the day of the contract
+            daysDict[contractDay] = daysDict[contractDay] + networkFees
+        }
+        if (contract.WindowEnd > (currentHeight - (daysInApi * 144))) {
+            // Host fees accrued on each day
+            // Estimated timestamp for the end of the contract, considering on average, one block on Sia is 10 min, or 600 secs
+            var contractEndTimestamp = parseInt(contract.Timestamp) + ((parseInt(contract.WindowEnd) - parseInt(contract.Height)) * 600)
+            var contracEndDay = dayStart(contractEndTimestamp)
+            daysDict[contracEndDay] = daysDict[contracEndDay] + hostFees
+        }
     }
 
     // F - API building
@@ -122,6 +135,36 @@ async function apiFormation(params) {
         return parseInt(a.date) - parseInt(b.date);
     });
 
+    // Revenue accumulators
+    for (var i = 0; i < days.length; i++) {
+        nowRevenue = nowRevenue + days[i].revenue
+        if (days[i].date < today - (86400 * 180)) {
+            sixMonthsAgoRevenue = sixMonthsAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 90)) {
+            ninetyDaysAgoRevenue = ninetyDaysAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 60)) {
+            sixtyDaysAgoRevenue = sixtyDaysAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 30)) {
+            thirtyDaysAgoRevenue = thirtyDaysAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 14)) {
+            twoWeeksAgoRevenue = twoWeeksAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 7)) {
+            oneWeekAgoRevenue = oneWeekAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - (86400 * 2)) {
+            twoDaysAgoRevenue = twoDaysAgoRevenue + days[i].revenue
+        }
+        if (days[i].date < today - 86400) {
+            oneDayAgoRevenue = oneDayAgoRevenue + days[i].revenue
+        }
+    }
+
+    // Final API structure
     var finalApi = {
         revenue: {
             now: parseFloat(nowRevenue.toFixed(2)),
@@ -139,24 +182,14 @@ async function apiFormation(params) {
 
     // G - Saving API file
     fs.writeFileSync("revenue_api.json", JSON.stringify(finalApi))
-    console.log("* Revenue API - Updated. 30-day revenue: $" + parseInt(nowRevenue - thirtyDaysAgoRevenue))
+    console.log("* Revenue API - Updated. 24-hour: $ " + parseInt(nowRevenue - oneDayAgoRevenue) 
+        + " 30-day: $" + parseInt(nowRevenue - thirtyDaysAgoRevenue)
+        + " 90-day: $" + parseInt(nowRevenue - ninetyDaysAgoRevenue))
 }
 
-async function convertUSD(params, contract, timestamp, pricesDict) {
+async function convertUSD(params, sc, timestamp, pricesDict) {
     // Getting the start of the day
     var day = dayStart(timestamp)
-
-    // Allowance value, in SC. The most straaight-forward approach would be using the transaction output deposited by the renter.
-    // However, on recent years new exotic file contract formats seen on the bloockchain use more than one output from the renter
-    // and the transaction includes a change output thaat returns to the wallet of the renter, complicating this approach.
-    // Instead, we calculate the allowance from the total value deposited on the contract by both renter and host 
-    // (calculated from the outputs in case of a valid Proof of Storage, plus the miner fees, plus the 3.9% of network fees 
-    // paid to the SiaFund holders), and then substracting the value of the transaction output deposited by the host
-    // (the collateral). In other words: Allowance = Contract value - Host's collateral
-    var contractValue = (contract.ValidProof1Value + contract.ValidProof2Value + contract.Fees) / (1 - params.blockchain.siafundFees)
-    sc = contractValue - contract.HostValue
-    if (sc <= 0) { sc = 0 } // Sanity check. No contract currently meets this, but in case of a bug prevents negative allowances
-
 
     // Reading the dictionary of prices for the USD conversion
     var value = (sc / params.blockchain.coinPrecision * pricesDict[day])
