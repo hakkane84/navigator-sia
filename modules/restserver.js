@@ -261,6 +261,19 @@ exports.Restserver = async function(params) {
         ApiFunctions.TotalCoins(params, res, req)
     });
 
+    
+    // Network revenue API for the Web 3 Index project
+    router.get('/navigator-api/web3index/revenue', function(req, res) {
+        // Reads the file reenue_api.json
+        try {
+            var data = fs.readFileSync("./revenue_api.json")
+            var statusResponse = JSON.parse(data)
+        } catch(e) {
+            var statusResponse = []
+        }
+        res.json(statusResponse);
+    });
+    
 
     // HTCPCP compliance :-)
     router.route('/navigator-api/coffee').get(function(req, res) {
