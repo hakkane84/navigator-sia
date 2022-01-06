@@ -53,13 +53,13 @@ async function apiFormation(params) {
     }
 
     // C - SQL query 2: Contracts
-    var sqlQuery = "SELECT HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp, WindowEnd "
+    var sqlQuery = "SELECT HostValue, ValidProof1Value, ValidProof2Value, Fees, Height, Timestamp, WindowEnd, Status "
         + "From ContractInfo ORDER BY Height ASC"
     var contractsSql = await SqlAsync.Sql(params, sqlQuery)
 
     // D1 - Initializing array with 180 (daysInApi) recent days and a dictionary for faster assignement
     var days = []
-    for (var i = 0; i < blockchainDays; i++) {
+    for (var i = 0; i <= blockchainDays; i++) {
         days.push({
             date: (genesisDate + (i * 86400)),
             revenue: 0
@@ -80,6 +80,10 @@ async function apiFormation(params) {
     var twoDaysAgoRevenue = 0
     var oneDayAgoRevenue = 0
     var nowRevenue = 0
+    // Accumulators for the secondary API
+    var hostPayouts30d = 0
+    var failedContracts30d = 0
+    var networkFees30d = 0
     
     // E - Loop building the revenue figures in USD
     for (var i = 0; i < contractsSql.length; i++) {
@@ -110,7 +114,11 @@ async function apiFormation(params) {
         // Sanity check. No contract currently meets this, but in case of a bug prevents negative values. We err 
         // with a conservative Revenue value
         if (sc <= 0) { sc = 0 } 
-        var hostFees = await convertUSD(params, sc, contract.Timestamp, pricesDict)
+        // Estimating the timestamp of the contract end
+        var endContractTimestamp = parseInt(contract.Timestamp) 
+            + ((parseInt(contract.WindowEnd) - parseInt(contract.Height)) * 600)
+        // USD value of the payout
+        var hostFees = await convertUSD(params, sc, endContractTimestamp, pricesDict)
 
         // Network fees accrued on each day, to be included on the "days" array
         var contractDay = dayStart(contract.Timestamp) // Start of the day of the contract
@@ -121,6 +129,18 @@ async function apiFormation(params) {
         var contractEndTimestamp = parseInt(contract.Timestamp) + ((parseInt(contract.WindowEnd) - parseInt(contract.Height)) * 600)
         var contracEndDay = dayStart(contractEndTimestamp)
         daysDict[contracEndDay] = daysDict[contracEndDay] + hostFees
+
+        // Data for the secondary API. Not used by the Web3 Index, but might have future or extended uses. Last 30 days
+        if (contract.Timestamp > (today - (86400 * 30))) {
+            networkFees30d = networkFees30d + networkFees
+        }
+        if (endContractTimestamp > (today - (86400 * 30))) {
+            if (contract.Status == 'complete-succ') {
+                hostPayouts30d = hostPayouts30d + hostFees
+            } else if (contract.Status == 'complete-fail') {
+                failedContracts30d = failedContracts30d + hostFees
+            }
+        }
     }
 
     // F - API building
@@ -180,11 +200,22 @@ async function apiFormation(params) {
         days: days
     }
 
-    // G - Saving API file
+    // G - Saving API files
     fs.writeFileSync("revenue_api.json", JSON.stringify(finalApi))
     console.log("* Revenue API - Updated. 24-hour: $ " + parseInt(nowRevenue - oneDayAgoRevenue) 
         + " 30-day: $" + parseInt(nowRevenue - thirtyDaysAgoRevenue)
         + " 90-day: $" + parseInt(nowRevenue - ninetyDaysAgoRevenue))
+
+    // Secondary API. Not used by Web3 Index but for future or extended uses
+    var secondaryApi = {
+        last30dayRevenue: {
+            total: parseInt(hostPayouts30d) + parseInt(failedContracts30d) + parseInt(networkFees30d),
+            hostPayouts: parseInt(hostPayouts30d),
+            failedContracts: parseInt(failedContracts30d),
+            networkFees: parseInt(networkFees30d)
+        }
+    }
+    fs.writeFileSync("revenue_api_secondary.json", JSON.stringify(secondaryApi))
 }
 
 async function convertUSD(params, sc, timestamp, pricesDict) {
