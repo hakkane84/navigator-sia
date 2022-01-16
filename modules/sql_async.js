@@ -72,38 +72,26 @@ exports.BacthInsert = async function(params, sqlBatch, height, indexing) {
     }
 
     if (params.useMsSqlServer == true) {
-        // Building a merged query. Only on MS SQL Server
-        var mergedQuery = ""
-        for (var i = 0; i < sqlBatch.length; i++) {
-            mergedQuery = mergedQuery + sqlBatch[i]
-            if (i < (sqlBatch.length - 1)) {
-                mergedQuery = mergedQuery + " "
-            }
-        }
-
-        // Try the batch-indexing
-        var result = await SqlAsync.Sql(params, mergedQuery)
-
-        // Failover: itemized indexing
-        if (result == false) {
-            console.log("// Batch " + word1 + " failed for block " + height + ". Proceding to itemized indexing")
-            var failedItemizedQueries = 0
-            for (var i = 0; i < sqlBatch.length; i++) {
-                var result = await SqlAsync.Sql(params, sqlBatch[i])
-                if (result == false) {
-                    failedItemizedQueries++
-                    console.log("// Failed itemized query for block " + height)
+        if (sqlBatch.length > params.maxSqlBatchSize) {
+            // Ultra-large block - making smaller sub-batches
+            subBatchNumber = Math.ceil(sqlBatch.length / params.maxSqlBatchSize)
+            for (var i = 0; i < subBatchNumber; i++) {
+                var batchStartTime = Math.floor(Date.now() / 1000)
+                var subBatchStart = i *  params.maxSqlBatchSize
+                var subBatchEnd = (i + 1) * params.maxSqlBatchSize
+                if (subBatchEnd > sqlBatch.length) {
+                    subBatchEnd = sqlBatch.length
                 }
-            }
-
-            if (failedItemizedQueries > 0) {
-                console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries - " + failedItemizedQueries + " failed queries")
-            } else {
-                //console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries")
+                var subBatch = sqlBatch.slice(subBatchStart, subBatchEnd)
+                await tryBatchIndexing(params, word1, height, subBatch)
+                var batchEndTime = Math.floor(Date.now() / 1000)
+                var batchTimer = Math.round(batchEndTime - batchStartTime)
+                console.log("* Sub-batching large query... (" + subBatchStart + " / " + sqlBatch.length + ") - "
+                    + batchTimer + " sec")
             }
         } else {
-            // Batch indexing worked propeprly
-            //console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries")
+            // Single batch for normal blocks
+            await tryBatchIndexing(params, word1, height, sqlBatch)
         }
 
     } else {
@@ -124,6 +112,46 @@ exports.BacthInsert = async function(params, sqlBatch, height, indexing) {
         }
     }
     return
+}
+
+async function tryBatchIndexing(params, word1, height, sqlBatch) {
+    // Building a merged query. Only on MS SQL Server
+    var mergedQuery = ""
+    for (var i = 0; i < sqlBatch.length; i++) {
+        mergedQuery = mergedQuery + sqlBatch[i]
+        if (i < (sqlBatch.length - 1)) {
+            mergedQuery = mergedQuery + " "
+        }
+    }
+
+    // Try the batch-indexing
+    var result = await SqlAsync.Sql(params, mergedQuery)
+
+    // Failover: itemized indexing
+    if (result == false) {
+        await failoverItemized(params, word1, height, sqlBatch)
+    } else {
+        // Batch indexing worked propeprly
+        //console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries")
+    }
+}
+
+async function failoverItemized(params, word1, height, sqlBatch) {
+    console.log("// Batch " + word1 + " failed for block " + height + ". Proceding to itemized indexing")
+    var failedItemizedQueries = 0
+    for (var i = 0; i < sqlBatch.length; i++) {
+        var result = await SqlAsync.Sql(params, sqlBatch[i])
+        if (result == false) {
+            failedItemizedQueries++
+            console.log("// Failed itemized query for block " + height)
+        }
+    }
+
+    if (failedItemizedQueries > 0) {
+        console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries - " + failedItemizedQueries + " failed queries")
+    } else {
+        //console.log("Block " + height + " " + word2 + " - " + sqlBatch.length + " queries")
+    }
 }
 
 

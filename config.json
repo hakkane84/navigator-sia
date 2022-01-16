@@ -163,5 +163,9 @@
     "dailyApiLogs": false, // Usage daily stats, including number of requests per IP
 
     // How often the user browser will check for updating the landing page. Default: 15000 milliseconds
-    "landingRefreshPeriod": 15000
+    "landingRefreshPeriod": 15000,
+
+    // If a block is conflictive to be indexed, it can be skipped temporally for further debugging, including it
+    // on this array
+    "skippingBlocks": []
 }

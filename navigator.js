@@ -136,12 +136,26 @@ async function getBlocksToIndex(blocksToPurgeNum) {
         
         // C - Purge the last purgeBlocksOnStartup (3 blocks by default). This is a security measure in case of blockchain reorgs or
         // a corrupted database due to incomplete indexing on a crash
-        var blocksToPurge = []
-        for (var i = 0; i < blocksToPurgeNum; i++) {
-            blocksToPurge.push(parseInt(sqlBlocks[i].Height))
-        }
-        for (var i = 0; i < blocksToPurge.length; i++) {
-            await Indexer.BlockDeleter(params, blocksToPurge[i])
+        try {
+            var blocksToPurge = []
+            for (var i = 0; i < blocksToPurgeNum; i++) {
+                blocksToPurge.push(parseInt(sqlBlocks[i].Height))
+            }
+            for (var i = 0; i < blocksToPurge.length; i++) {
+                // Check if the block is not labelled to be skipped
+                var blockToSkip = false
+                for (var b = 0; b < params.skippingBlocks.length; b++) {
+                    if (blocksToPurge[i] == params.skippingBlocks[b]) {
+                        blockToSkip = true
+                    }
+                } 
+                
+                if (blockToSkip == false) {
+                    await Indexer.BlockDeleter(params, blocksToPurge[i])
+                }
+            }
+        } catch (e) {
+            console.log("//// Error during initial block purging")
         }
 
         // D - Find gaps in the sequence, and determine the blocks that remain to be indexed (including the purged blocks)

@@ -97,6 +97,10 @@ exports.Params = function(config, scriptPath)
         var sqlArgumentsSize = 950
     }
     
+    // Sub-batching for MS-SQL. Very large blocks can drive to hundreds of thousands of queries on a batch,
+    // so we split the batches in sub-batches of the indicated size. SQLite will not sub-batch, it is always
+    // itemized
+    var maxSqlBatchSize = 10000
 
     // Exchange rates for these currencies. A table with the exchange rates will be created to be used on the .CSV reports
     var exchangeCurrencies = [
@@ -145,6 +149,7 @@ exports.Params = function(config, scriptPath)
         msSqlPoolPromise: msSqlPoolPromise,
         sqLiteDb: sqLiteDb,
         sqlArgumentsSize: sqlArgumentsSize,
+        maxSqlBatchSize: maxSqlBatchSize,
         exchangeCurrencies: exchangeCurrencies,
         websitePath: websitePath,
         injectWebsiteOnStartup: injectWebsiteOnStartup,
@@ -172,7 +177,8 @@ exports.Params = function(config, scriptPath)
         apiBatchLimit: apiBatchLimit,
         donationAddress: config.donationAddress,
         githubRepository: config.githubRepository,
-        landingRefreshPeriod: config.landingRefreshPeriod
+        landingRefreshPeriod: config.landingRefreshPeriod,
+        skippingBlocks: config.skippingBlocks
     }
 
     return params
