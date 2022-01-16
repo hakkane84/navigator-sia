@@ -59,7 +59,8 @@ exports.Addresses = async function(params, sqlBatch, addressesImplicated, height
     }
 
     // Addresses balance update
-    sqlBatch = await Addresses.Balances(params, sqlBatch, addressesImplicated, false)
+    // Temporally disabled, as the table of balances is currently bugged and is causing unnecesary overhead
+    //sqlBatch = await Addresses.Balances(params, sqlBatch, addressesImplicated, false)
     
     return sqlBatch
 }
