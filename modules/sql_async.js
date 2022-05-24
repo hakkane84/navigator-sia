@@ -95,6 +95,7 @@ exports.BacthInsert = async function(params, sqlBatch, height, indexing) {
         }
 
     } else {
+		let failedItemizedQueries = 0;
         // SQLite does not accept multiple queries on a single message round trip. We always do itemized indexing
         // Besides, according to https://sqlite.org/np1queryprob.html this is not an inefficiency issue for SQLite
         for (var i = 0; i < sqlBatch.length; i++) {
