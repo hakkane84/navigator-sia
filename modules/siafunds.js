@@ -78,7 +78,7 @@ exports.sfTransactionProcess = async function(params, apiblock, n, height, times
                     var senderClaimAddress = apiblock.transactions[i].rawtransaction.siafundinputs[j].claimunlockhash
 
                     // Claim output creation
-                    newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[i].id, apiblock.height)
+                    newSql = await Outputs.SfClaimOutput(params, newSql, senderMatcher, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[i].id, apiblock.height)
 
                     // Adding the claim to addressesImplicated with a flag: It is indexed, but we need the info to update the balance of the address
                     addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, "txType": "SfClaim"})
@@ -149,9 +149,10 @@ exports.sfTransactionProcess = async function(params, apiblock, n, height, times
             senderClaim = senderClaim * apiblock.transactions[n].siafundinputoutputs[j].value // We multiply it by the number of SF transacted
             totalSCtransacted = totalSCtransacted + Math.floor(senderClaim)
             var senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+			const siafundOutputID = apiblock.transactions[n].rawtransaction.siafundinputs[j].parentid
 
             // Claim output creation
-            newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
+            newSql = await Outputs.SfClaimOutput(params, newSql, siafundOutputID, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
 
             // Adding the claim to addressesImplicated with a flag: It is indexed, but we need the info to update the balance of the address
             addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, txType: "SfClaim"})
@@ -278,9 +279,10 @@ exports.sfSingleTransaction = async function(params, apiblock, n, height, timest
         senderClaim = senderClaim * apiblock.transactions[n].siafundinputoutputs[j].value // We multiply it by the number of SF transacted
         totalSCtransacted = totalSCtransacted + Math.floor(senderClaim)
         var senderClaimAddress = apiblock.transactions[n].rawtransaction.siafundinputs[j].claimunlockhash
+		const siafundOutputID = apiblock.transactions[n].rawtransaction.siafundinputs[j].parentid
 
         // Claim output creation
-        newSql = await Outputs.SfClaimOutput(params, newSql, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
+        newSql = await Outputs.SfClaimOutput(params, newSql, siafundOutputID, BigInt(senderClaim), senderClaimAddress, apiblock.transactions[n].id, apiblock.height)
 
         // Adding the claim to addressesImplicated with a flag of txType
         addressesImplicated.push({"hash": senderClaimAddress, "sc": senderClaim, "sf": 0, txType: "SfClaim"})
