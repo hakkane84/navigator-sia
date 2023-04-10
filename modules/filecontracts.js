@@ -847,6 +847,7 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         }
         var triParent = false
         var quadParent = false
+        var pentaMoreParent = false
         if (tx.rawtransaction.siacoininputs.length == 3) {
             // "Tri-Parent" Bizarre contracts made from 3 inputs, the first two belonging to the renter and the third
             // to the host. Observed since 2020
@@ -854,6 +855,11 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
         } else if (tx.rawtransaction.siacoininputs.length == 4) {
             // "Quad-Parent" contracts made from 4 inputs, the last one the host's
             quadParent = true
+        } else if (tx.rawtransaction.siacoininputs.length > 4) {
+            // "Penta-or-more-parent" contracts made from 5+ inputs, the last one the host's
+            // The SQL logic can't handle this unlimited logic, so as a bypass, renter's inputs beyond 3 are added up
+            // and represenetd with the hash of the number 3. Addresses are handled normally
+            pentaMoreParent = true
         }
         var allowance2PostingHash = null // Default as null, it does not exist in most of the cases
         var allowance3PostingHash = null // Default as null, it does not exist in most of the cases
@@ -975,6 +981,20 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
             var renterAllowance2Sender = tx.siacoininputoutputs[1].unlockhash
             var renterAllowance3Value = parseInt(tx.siacoininputoutputs[2].value) 
             var renterAllowance3Sender = tx.siacoininputoutputs[2].unlockhash
+        } else if (tx.rawtransaction.siacoininputs.length > 4) {
+            // Fiver or more parents
+            var hostCollateralValue = parseInt(tx.siacoininputoutputs[tx.siacoininputoutputs.length-1].value)
+            var hostCollateralSender = tx.siacoininputoutputs[tx.siacoininputoutputs.length-1].unlockhash
+            var renterAllowance2Value = parseInt(tx.siacoininputoutputs[1].value) 
+            var renterAllowance2Sender = tx.siacoininputoutputs[1].unlockhash
+            
+            // Adding up values beyond 2
+            addedValue = 0
+            for (var p = 2; p < (tx.siacoininputoutputs.length-1); p++) {
+                addedValue = addedValue + parseInt(tx.siacoininputoutputs[p].value)
+            }
+            var renterAllowance3Value = addedValue 
+            var renterAllowance3Sender = tx.siacoininputoutputs[2].unlockhash
         }
         
         var totalTransacted = renterAllowanceValue + hostCollateralValue + renterAllowance2Value + renterAllowance3Value
@@ -1016,7 +1036,7 @@ exports.atomicRenewalProcess = function(params, apiblock, n, height, timestamp) 
                     renterAllowanceValue = BigInt(renterAllowanceValue) - BigInt(tx.siacoinoutputs[i].value)
                 } else if (tx.siacoinoutputs[i].unlockhash == renterAllowance2Sender) {
                     renterAllowance2Value = BigInt(renterAllowance2Value) - BigInt(tx.siacoinoutputs[i].value)
-                } else if (quadParent == true) {
+                } else if (quadParent == true || pentaMoreParent == true) {
                     addressesImplicated.push({"hash": renterAllowance2Sender, "sc": (renterAllowance2Value * (-1)), "masterHash": masterHash, "txType": "contractform"})
                     addressesImplicated.push({"hash": renterAllowance3Sender, "sc": (renterAllowance3Value * (-1)), "masterHash": masterHash, "txType": "contractform"})
                 }   
