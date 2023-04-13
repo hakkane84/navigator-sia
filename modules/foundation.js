@@ -6,6 +6,52 @@ var SqlAsync = require('./sql_async.js')
 var SqlComposer = require("./sql_composer.js")
 var Commons = require('./commons.js')
 
+function hashAll(...args) {
+	// Calculates the subsidy ID by hashing together the block ID bytes and foundation specifier
+	const hasher = blake.blake2bInit(32, null);
+
+	// loop through each of our arguments and update the hasher
+	for (let i = 0; i < args.length; i++)
+		blake.blake2bUpdate(hasher, args[i]);
+
+	//finalize the hash
+	return blake.blake2bFinal(hasher);
+}
+
+function newSpecifier(str) {
+	// Takes the specifier and transforms it into a buffer
+	const buf = Buffer.alloc(16);
+	buf.write(str, encoding='ascii');
+	return buf;
+}
+
+function encodeUint64(n) {
+	const buf = Buffer.alloc(8);
+	// cast to a BigInt in case it is only a number.
+	buf.writeBigUInt64LE(BigInt(n));
+	return buf;
+}
+
+const specifierStorageProof = newSpecifier("storage proof");
+
+// This function takes the hash of a block and the index of a miner payout to
+// calculate the OutputID of a miner payout.
+exports.CalculateMinerOutputID = function(blockHash, i) {
+	return Buffer.from(hashAll(Buffer.from(blockHash, 'hex'), encodeUint64(i))).toString('hex');
+}
+
+exports.CalculateSiafundOutputID = function(siafundOutputHash) {
+	return Buffer.from(hashAll(Buffer.from(siafundOutputHash, 'hex'))).toString('hex');
+}
+
+exports.CalculateContractPayoutID = function(contractHash, validProof, i) {
+	const contractBuf = Buffer.from(contractHash, 'hex'),
+		proofBuf = Buffer.alloc(1, validProof ? 1 : 0),
+		index = encodeUint64(i);
+
+	return Buffer.from(hashAll(specifierStorageProof, contractBuf, proofBuf, index)).toString('hex');
+}
+
 
 exports.CalculateOutputIdSubsidy = async function(blockHash, specifier) {
 	// This function takes the hash of a block together with the specifier of the Sia Foundation and calculates
@@ -13,26 +59,6 @@ exports.CalculateOutputIdSubsidy = async function(blockHash, specifier) {
 	// This function is a courtesy of Nate Maninger, from https://SiaCentral.com, whom I am extremely grateful with for his help
 	
 	var specifierFoundation = newSpecifier(specifier);
-
-	function newSpecifier(str) {
-		// Takes the specifier and transforms it into a buffer
-		const buf = Buffer.alloc(16);
-		buf.write(str, encoding='ascii');
-		return buf;
-	}
-
-	function hashAll(...args) {
-		// Calculates the subsidy ID by hashing together the block ID bytes and foundation specifier
-
-		const hasher = blake.blake2bInit(32, null);
-
-		// loop through each of our arguments and update the hasher
-		for (let i = 0; i < args.length; i++)
-		blake.blake2bUpdate(hasher, args[i]);
-
-		//finalize the hash
-		return blake.blake2bFinal(hasher);
-	}
 
 	// convert the block ID from its hex encoded string to a Buffer
 	var blockID = Buffer.from(blockHash, 'hex');

@@ -281,7 +281,7 @@ async function minerPayoutProcessor(params, sqlBatch, addressesImplicated, heigh
     sqlBatch.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, minerPayoutTxId))
     
     // Add the new output
-    sqlBatch = await Outputs.MiningPoolPayoutOutput(params, sqlBatch, api, height, payoutAddress)
+    sqlBatch = await Outputs.MiningPoolPayoutOutput(params, sqlBatch, api, height, payoutAddress, 0)
     
     // Mining pool name
     var miningPool = "Unknown" // Default 

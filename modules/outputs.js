@@ -2,6 +2,7 @@
 var exports = module.exports={}
 var SqlComposer = require("./sql_composer.js")
 var Commons = require('./commons.js')
+const { CalculateMinerOutputID, CalculateSiafundOutputID } = require('./foundation.js');
 
 exports.Outputs = async function(params, api, sqlBatch) {
     // Creates SQL entries for newly created outputs and updates the spent outputs
@@ -139,86 +140,36 @@ exports.Outputs = async function(params, api, sqlBatch) {
 }
 
 
-exports.SfClaimOutput = async function(params, sqlBatch, senderClaim, senderClaimAddress, txHash, height) {
+exports.SfClaimOutput = async function(params, sqlBatch, siafundID, senderClaim, senderClaimAddress, txHash, height) {
     // Adds the output created during a SF fees claim
+    const outputId = CalculateSiafundOutputID(siafundID);
+	
+	// Push output to the batch: new output and outputID as a hash type
+	var sqlQuery = SqlComposer.CreateOutput(
+		params, "Outputs-SC", outputId, BigInt(senderClaim), senderClaimAddress, height)
+	sqlBatch.push(sqlQuery)
 
-    // Currently, the consensus/block API does not indicate in any field which is the outputID of the claimed fees. This used to be on 
-    // siafundclaimoutputids on the explorer API
-    // As a temporal solution, I use the explorer module. Even if broken, it should be able to provide this info
-
-    // Only if the explorer module is available
-    if (params.explorerAvailable == true) {
-        
-        // We make this call as a "one try" method (the "true"), as the `/explorer/hashes` API sometimes might fall without any specific reason,
-        // and it is better just going to the failover solution of getting the full block
-        var api = await Commons.MegaRouter(params, 0, "/explorer/hashes/" + txHash, true)
-
-        try {
-            var outputId = api.transaction.siafundclaimoutputids[0]
-        } catch (e) {
-            // In some cases, the /explorer/hashes endpoint will return a wrong result without the output, if this happens, we instead
-            // collect the full block info, that is more costly
-            try {
-                var apiBlock = await Commons.MegaRouter(params, 0, '/explorer/blocks/' + height)
-                for (var i = 0; i < apiBlock.block.transactions.length; i++) {
-                    if (apiBlock.block.transactions[i].id == txHash) {
-                        var outputId = apiBlock.block.transactions[i].siafundclaimoutputids[0]
-                    }
-                }
-            
-            } catch (e) {
-                // Stops the script to allow a graceful restart by Forever/PM2 if something unexpected stopped the indexer. As the script runs also the API server and the
-                // database connector, otherwise the script would keep running
-                console.log(e)
-                console.log("*** Forcing the stop of the script in 20 seconds")
-                await Commons.Delay(20000); // Async timeout
-                process.exit()
-            }    
-        }
-        
-        
-        // Push output to the batch: new output and outputID as a hash type
-        var sqlQuery = SqlComposer.CreateOutput(
-            params, "Outputs-SC", outputId, BigInt(senderClaim), senderClaimAddress, height)
-        sqlBatch.push(sqlQuery)
-
-        var toAddHashTypes = "('" + outputId + "','output','')"
-        var sqlQuery = SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, outputId)
-        sqlBatch.push(sqlQuery)
-    }
+	var toAddHashTypes = "('" + outputId + "','output','')"
+	var sqlQuery = SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, outputId)
+	sqlBatch.push(sqlQuery)
 
     // Return the updated batch
     return sqlBatch
 }
 
 
-exports.MiningPoolPayoutOutput = async function(params, sqlBatch, api, height, payoutAddress) {
+exports.MiningPoolPayoutOutput = async function(params, sqlBatch, api, height, payoutAddress, index) {
     // Identifies the output recepient of the block reward
+	const outputId = CalculateMinerOutputID(api.id, index);
 
-    // Info currently missing from the consensus/block API. As a temporal solution, this relies on a call to the explorer API until
-    // Nebulous adds this info to the consensus API. If the usuer decides to not use the explorer module, this infor will not be used
+	// New output
+	var sqlQuery = SqlComposer.CreateOutput(
+		params, "Outputs-SC", outputId, BigInt(api.minerpayouts[0].value), payoutAddress, height)
+	sqlBatch.push(sqlQuery)
 
-    // Only if the explorer module is available
-    if (params.explorerAvailable == true) {
-        try {
-            var apiExplorer = await Commons.MegaRouter(params, 0, '/explorer/blocks/' + height)
-            var outputId = apiExplorer.block.minerpayoutids[0]
-
-            // New output
-            var sqlQuery = SqlComposer.CreateOutput(
-                params, "Outputs-SC", outputId, BigInt(api.minerpayouts[0].value), payoutAddress, height)
-            sqlBatch.push(sqlQuery)
-
-            // Output as hash type
-            var toAddHashTypes = "('" + outputId + "','output','')"
-            sqlBatch.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, outputId))
-
-        } catch (e) {
-            console.log("//// Could not retrieve the block from the explorer API for the outputID of the mining pool payout. This output has been skipped")
-            console.log(e)
-        }
-    }
-
+	// Output as hash type
+	var toAddHashTypes = "('" + outputId + "','output','')"
+	sqlBatch.push(SqlComposer.InsertSql(params, "HashTypes", toAddHashTypes, outputId))
     return sqlBatch
 }
 
